@@ -7,7 +7,6 @@ require (
 	github.com/cloudflare/circl v1.6.1
 	github.com/juju/ratelimit v1.0.2
 	github.com/klauspost/compress v1.18.1 // indirect
-	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/pires/go-proxyproto v0.8.1
 	github.com/refraction-networking/utls v1.8.1
 	golang.org/x/crypto v0.45.0
