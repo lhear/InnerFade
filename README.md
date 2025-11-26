@@ -5,7 +5,7 @@ InnerFade is a network proxy tool providing secure communication using the **REA
 *  **TLS MITM Decryption:** Client-side decryption of HTTPS traffic by dynamically generating and signing TLS certificates.
 *   **Perfect Traffic Feature:**
     *   **ALPN Passthrough:** Transparently passes the client's original ALPN value, resolving compatibility issues common to other MITM proxies.
-    *   **Domain Caching:** Uses a SQLite database on both client and server to store domains and their short, SHA256 hash-based IDs.
+    *   **Domain Caching:** Employs a high-performance, custom file-backed hash table (using separate index and data files) on both client and server to persistently store domains and their short, SHA256 hash-based IDs.
     *   **Stealthy Target Information Transfer:** Upon a client cache hit, the target domain ID, port, and ALPN code are encrypted and embedded into the 32-byte TLS `ClientHello.Random` field.   
     *   **Zero-Packet Target Resolution:** The server decrypts and extracts this information from the `Random` field upon receiving the `ClientHello`. This resolves the true target address without extra packets or detectable metadata.
 
