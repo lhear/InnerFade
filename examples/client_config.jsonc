@@ -1,0 +1,11 @@
+{
+    "mode": "client",
+    "listen_addr": "127.0.0.1:1080", // Client proxy listening address (e.g., SOCKS5 or HTTP proxy address)
+    "server_addr": "your_server_ip:443", // Remote server address that the client connects to
+    "ca_cert": "ca.crt", // Path to the CA certificate file for MITM decryption
+    "ca_key": "ca.key", // Path to the CA private key file for MITM decryption
+    "cache_path": "cache.db", // Path for the SQLite domain cache database on the client side
+    "public_key": "your_server_public_key_base64", // Base64 encoded X25519 public key of the server
+    "server_name": "www.example.com", // The SNI (Server Name Indication) to use for the REALITY handshake
+    "log_level": "info" // Logging level: debug, info, warn, error, none
+}

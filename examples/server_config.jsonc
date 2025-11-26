@@ -1,0 +1,13 @@
+{
+    "mode": "server",
+    "listen_addr": "0.0.0.0:443", // Server listening address
+    "private_key": "your_server_private_key_base64", // Base64 encoded X25519 private key of the server
+    "cache_path": "cache.db", // Path for the SQLite domain cache database on the server side
+    "dest": "www.example.com:443", // Default destination for REALITY handshake
+    "server_names": [
+        "www.example.com", // Accepted SNI for REALITY handshake
+        "another.example.org" // Add more SNI values as needed
+    ],
+    "socks5_proxy": "", // Optional: Outbound SOCKS5 proxy address for the server (e.g., "127.0.0.1:1081")
+    "log_level": "info" // Logging level: debug, info, warn, error, none
+}
