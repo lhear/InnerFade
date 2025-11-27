@@ -144,19 +144,8 @@ func (c *UConn) VerifyPeerCertificate(rawCerts [][]byte, verifiedChains [][]*x50
 		h := hmac.New(sha512.New, c.AuthKey)
 		h.Write(pub)
 		if bytes.Equal(h.Sum(nil), certs[0].Signature) {
-			if len(c.Config.Mldsa65Verify) > 0 {
-				if len(certs[0].Extensions) > 0 {
-					h.Write(c.HandshakeState.Hello.Raw)
-					h.Write(c.HandshakeState.ServerHello.Raw)
-					// Note: ML-DSA-65 verification removed to reduce dependencies
-					// In a full implementation, you would need to include the appropriate library
-					c.Verified = true
-					return nil
-				}
-			} else {
-				c.Verified = true
-				return nil
-			}
+			c.Verified = true
+			return nil
 		}
 	}
 	opts := x509.VerifyOptions{

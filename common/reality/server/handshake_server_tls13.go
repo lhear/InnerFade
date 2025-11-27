@@ -30,8 +30,6 @@ import (
 	"innerfade/common/reality/server/fips140tls"
 	"innerfade/common/reality/server/hpke"
 	"innerfade/common/reality/server/tls13"
-
-	"github.com/cloudflare/circl/sign/mldsa/mldsa65"
 )
 
 // maxClientPSKIdentities is the number of client PSK identities the server will
@@ -150,13 +148,14 @@ func (hs *serverHandshakeStateTLS13) handshake() error {
 		h := hmac.New(sha512.New, c.AuthKey)
 		h.Write(ed25519Priv[32:])
 		h.Sum(cert[:len(cert)-64])
-
-		if len(c.config.Mldsa65Key) > 0 {
-			h.Write(hs.clientHello.original)
-			h.Write(hs.hello.original)
-			key, _ := mldsa65.Scheme().UnmarshalBinaryPrivateKey(c.config.Mldsa65Key)
-			mldsa65.SignTo(key.(*mldsa65.PrivateKey), h.Sum(nil), nil, false, cert[126:]) // fixed location
-		}
+		/*
+			if len(c.config.Mldsa65Key) > 0 {
+				h.Write(hs.clientHello.original)
+				h.Write(hs.hello.original)
+				key, _ := mldsa65.Scheme().UnmarshalBinaryPrivateKey(c.config.Mldsa65Key)
+				mldsa65.SignTo(key.(*mldsa65.PrivateKey), h.Sum(nil), nil, false, cert[126:]) // fixed location
+			}
+		*/
 
 		hs.cert = &Certificate{
 			Certificate: [][]byte{cert},

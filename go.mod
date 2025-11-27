@@ -4,7 +4,6 @@ go 1.24.5
 
 require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
-	github.com/cloudflare/circl v1.6.1
 	github.com/juju/ratelimit v1.0.2
 	github.com/klauspost/compress v1.18.1 // indirect
 	github.com/pires/go-proxyproto v0.8.1
