@@ -73,8 +73,9 @@ func (c *Config) GetREALITYConfig() *reality.Config {
 		MaxClientVer: c.MaxClientVer,
 		MaxTimeDiff:  time.Duration(c.MaxTimeDiff) * time.Millisecond,
 
-		NextProtos:             nil, // should be nil
-		SessionTicketsDisabled: true,
+		NextProtos:                  nil, // should be nil
+		SessionTicketsDisabled:      true,
+		DynamicRecordSizingDisabled: true,
 	}
 	config.ServerNames = make(map[string]bool)
 	for _, serverName := range c.ServerNames {
