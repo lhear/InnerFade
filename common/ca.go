@@ -166,14 +166,6 @@ func GenerateTempCA() (*CA, error) {
 }
 
 func (ca *CA) GenerateCert(hostname string) (*tls.Certificate, error) {
-	if val, ok := ca.certCache.Load(hostname); ok {
-		cert := val.(*tls.Certificate)
-		if cert.Leaf != nil && time.Until(cert.Leaf.NotAfter) > 10*time.Minute {
-			logger.Debugf("certificate cache hit: %s", hostname)
-			return cert, nil
-		}
-	}
-
 	logger.Debugf("generating new certificate (ECC): %s", hostname)
 
 	serialNumber, err := randomSerial()

@@ -43,10 +43,11 @@ func (c *Client) peekClientHello(conn net.Conn) (net.Conn, string, []string, err
 
 func (c *Client) createTLSConfigWithALPNs(hostname string, alpns []string) *tls.Config {
 	cert, _ := c.certCache.Get(hostname, c.ca)
-	baseCfg := c.tlsCache.GetConfig(hostname, cert)
-	newConfig := baseCfg.Clone()
-	newConfig.NextProtos = alpns
-	return newConfig
+	return &tls.Config{
+		MinVersion:   tls.VersionTLS12,
+		Certificates: []tls.Certificate{*cert},
+		NextProtos:   alpns,
+	}
 }
 
 func parseClientHelloDetails(data []byte) (sni string, alpns []string) {

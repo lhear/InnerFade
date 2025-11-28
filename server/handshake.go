@@ -23,9 +23,9 @@ func (s *Server) handleCustomProtocol(conn net.Conn) {
 		logger.Warnf("[%s] handshake parsing failed: %v", conn.RemoteAddr(), err)
 		return
 	}
-	hostname, _, err := common.ParseHostPort(targetAddr)
+	hostname, _, err := net.SplitHostPort(targetAddr)
 	if err != nil {
-		logger.Error(err)
+		logger.Errorf("[%s] failed to parse address %s: %v", conn.RemoteAddr(), targetAddr, err)
 		return
 	}
 

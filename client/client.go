@@ -22,7 +22,6 @@ var domainCache *cache.DomainCache
 type Client struct {
 	config        *config.Config
 	ca            *common.CA
-	tlsCache      *common.TLSConfigCache
 	certCache     *CertCache
 	serverAddr    string
 	encryptionKey []byte
@@ -69,7 +68,7 @@ func (cc *CertCache) Get(hostname string, ca *common.CA) (*tls.Certificate, bool
 }
 
 func (cc *CertCache) cleanup() {
-	ticker := time.NewTicker(10 * time.Minute)
+	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -99,7 +98,6 @@ func Start(cfg *config.Config) error {
 	client := &Client{
 		config:     cfg,
 		ca:         caInstance,
-		tlsCache:   common.NewTLSConfigCache(),
 		certCache:  NewCertCache(),
 		serverAddr: cfg.ServerAddr,
 		dialer: &net.Dialer{

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"innerfade/common"
@@ -17,7 +18,19 @@ func (c *Client) parseHost(hostPort string) (string, int, error) {
 	if !strings.Contains(hostPort, ":") {
 		hostPort += ":443"
 	}
-	return common.ParseHostPort(hostPort)
+	host, portStr, err := net.SplitHostPort(hostPort)
+	if err != nil {
+		return "", 0, err
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		var pErr error
+		port, pErr = net.LookupPort("tcp", portStr)
+		if pErr != nil {
+			return "", 0, pErr
+		}
+	}
+	return host, port, nil
 }
 
 func (c *Client) hijackConn(w http.ResponseWriter) (net.Conn, error) {
