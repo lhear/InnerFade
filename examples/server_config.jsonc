@@ -2,7 +2,7 @@
     "mode": "server",
     "listen_addr": "0.0.0.0:443", // Server listening address
     "private_key": "your_server_private_key_base64", // Base64 encoded X25519 private key of the server
-    "cache_path": "cache.db", // Path for the SQLite domain cache database on the server side
+    "cache_path": "cache", // Path for the domain cache file on the server side
     "dest": "www.example.com:443", // Default destination for REALITY handshake
     "server_names": [
         "www.example.com", // Accepted SNI for REALITY handshake
