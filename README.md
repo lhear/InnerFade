@@ -36,12 +36,12 @@ InnerFade uses separate JSON configuration files for the client and server. Exam
 InnerFade provides flags to generate necessary assets:
 *   **Generate X25519 Key Pair:**
     ```
-    ./proxy -generate-keypair
+    ./innerfade -generate-keypair
     ```
     Outputs public (for client config) and private (for server config) keys.
 *   **Generate CA Certificate and Key for MITM:**      
     ```
-    ./proxy -generate-ca -ca-cert ca.crt -ca-key ca.key
+    ./innerfade -generate-ca -ca-cert ca.crt -ca-key ca.key
     ```
     Generates `ca.crt` and `ca.key`. The CA certificate must be trusted by the client machine/browser.
 
