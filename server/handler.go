@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -16,7 +16,6 @@ import (
 
 	"innerfade/common"
 	"innerfade/common/cache"
-	"innerfade/common/crypto"
 	"innerfade/logger"
 )
 
@@ -39,19 +38,12 @@ func (s *Server) acceptConnection(conn net.Conn) {
 	s.handleConnection(conn)
 }
 
-func (s *Server) handleClientRandom(remoteAddr string, clientRandom []byte) (serverRandom []byte) {
+func (s *Server) handleClientMetaData(remoteAddr string, metaData []byte) (serverMetaData []byte) {
+	serverMetaData = make([]byte, 12)
 
-	serverRandom = make([]byte, 32)
-	if _, err := io.ReadFull(rand.Reader, serverRandom); err != nil {
-		return nil
-	}
-
-	var random32 [32]byte
-	copy(random32[:], clientRandom)
-
-	id, port, alpnCode, ok := cache.DecodeRandom(random32, s.encryptionKey)
-	logger.Debugf("[%s] decoded client random - ID: %d, Port: %d, ALPN Code: 0x%x", remoteAddr, id, port, alpnCode)
-	if !ok {
+	useCache, id, port, alpnCode := DecodeMetaData(metaData)
+	logger.Debugf("[%s] decoded client MetaData - ID: %d, Port: %d, ALPN Code: 0x%x", remoteAddr, id, port, alpnCode)
+	if !useCache {
 		return
 	}
 
@@ -62,8 +54,7 @@ func (s *Server) handleClientRandom(remoteAddr string, clientRandom []byte) (ser
 	}
 	if !found {
 		logger.Debugf("[%s] domain %s not found in cache, sending server cache miss status", remoteAddr, domain)
-		serverRandom[0] = 2
-		s.signServerRandom(serverRandom)
+		serverMetaData[0] = 2
 		return
 	}
 
@@ -73,8 +64,7 @@ func (s *Server) handleClientRandom(remoteAddr string, clientRandom []byte) (ser
 	destConn, negotiatedProto, err := s.dialTarget(targetAddr, targetAlpn)
 	if err != nil {
 		logger.Warnf("[%s] connection to target %s failed: %v", remoteAddr, targetAddr, err)
-		serverRandom[0] = 1
-		s.signServerRandom(serverRandom)
+		serverMetaData[0] = 1
 		return
 	}
 
@@ -90,21 +80,9 @@ func (s *Server) handleClientRandom(remoteAddr string, clientRandom []byte) (ser
 	s.handshakeCache.Store(remoteAddr, dest)
 
 	respAlpnCode, _ := common.AlpnToByte([]string{negotiatedProto})
-	serverRandom[0] = 0
-	serverRandom[1] = respAlpnCode
-	s.signServerRandom(serverRandom)
-
-	return serverRandom
-}
-
-func (s *Server) signServerRandom(random []byte) {
-	hash := sha256.Sum256(random[0:2])
-	copy(random[2:10], hash[0:8])
-	encryptedData, err := crypto.AESEncryptWithNonce(random[0:10], s.encryptionKey, random[10:32])
-	if err != nil {
-		return
-	}
-	copy(random[0:10], encryptedData)
+	serverMetaData[0] = 0
+	serverMetaData[1] = respAlpnCode
+	return
 }
 
 func (s *Server) handleConnection(conn net.Conn) {
@@ -220,4 +198,12 @@ func delHopHeaders(header http.Header) {
 	for _, h := range hopHeaders {
 		header.Del(h)
 	}
+}
+
+func DecodeMetaData(metaData []byte) (useCache bool, id [8]byte, port uint16, alpnCode byte) {
+	useCache = metaData[0] == 1
+	copy(id[:], metaData[1:9])
+	port = binary.BigEndian.Uint16(metaData[9:11])
+	alpnCode = metaData[11]
+	return
 }

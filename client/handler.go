@@ -2,8 +2,6 @@ package client
 
 import (
 	"bufio"
-	"crypto/sha256"
-	"crypto/subtle"
 	"crypto/tls"
 	"errors"
 	"io"
@@ -13,7 +11,6 @@ import (
 
 	"innerfade/common"
 	"innerfade/common/cache"
-	"innerfade/common/crypto"
 	"innerfade/common/reality"
 	"innerfade/logger"
 )
@@ -63,42 +60,26 @@ func (c *Client) handleConnect(w http.ResponseWriter, r *http.Request) {
 	needHandshake := !cacheUsed
 
 	if cacheUsed {
-		serverRandom := serverConn.(*reality.UConn).HandshakeState.ServerHello.Random
+		serverMetaData := serverConn.(*reality.UConn).MetaData
 
-		decryptedData, err := crypto.AESDecryptWithNonce(serverRandom[0:10], c.encryptionKey, serverRandom[10:32])
-		if err != nil {
+		switch serverMetaData[0] {
+		case 1:
+			logger.Errorf("[%s] failed to connect to target server (server returned error) for %s", r.RemoteAddr, hostname)
+			return
+		case 2:
+			logger.Debugf("[%s] server cache miss for %s, falling back to regular handshake", r.RemoteAddr, hostname)
 			needHandshake = true
-		} else {
-			expectedHash := decryptedData[2:10]
-			calculatedHashFull := sha256.Sum256(decryptedData[0:2])
-			calculatedHashTruncated := calculatedHashFull[0:8]
-
-			if subtle.ConstantTimeCompare(calculatedHashTruncated, expectedHash) != 1 {
-				logger.Errorf("[%s] server handshake validation failed for %s", r.RemoteAddr, hostname)
+		case 0:
+			alpn, ok := common.ByteToAlpn(serverMetaData[1])
+			if !ok {
+				logger.Errorf("[%s] failed to parse target ALPN for %s", r.RemoteAddr, hostname)
 				return
 			} else {
-
-				switch decryptedData[0] {
-				case 1:
-					logger.Errorf("[%s] failed to connect to target server (server returned error) for %s", r.RemoteAddr, hostname)
-					return
-				case 2:
-					logger.Debugf("[%s] server cache miss for %s, falling back to regular handshake", r.RemoteAddr, hostname)
-					needHandshake = true
-				case 0:
-
-					alpn, ok := common.ByteToAlpn(decryptedData[1])
-					if !ok {
-						logger.Errorf("[%s] failed to parse target ALPN for %s", r.RemoteAddr, hostname)
-						return
-					} else {
-						serverALPNs = alpn
-					}
-				default:
-					logger.Errorf("[%s] unknown status code %d for %s", r.RemoteAddr, decryptedData[0], hostname)
-					return
-				}
+				serverALPNs = alpn
 			}
+		default:
+			logger.Errorf("[%s] unknown status code %d for %s", r.RemoteAddr, serverMetaData[0], hostname)
+			return
 		}
 	}
 
@@ -136,7 +117,7 @@ func (c *Client) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	r.RequestURI = ""
 
-	serverConn, err := c.dialUpstream(nil)
+	serverConn, err := c.dialUpstream([12]byte{})
 	if err != nil {
 		logger.Errorf("[%s] HTTP proxy connection failed to %s: %v", r.RemoteAddr, r.URL.String(), err)
 		http.Error(w, "proxy connection failed", http.StatusBadGateway)

@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"net"
 	"net/http"
@@ -63,7 +64,7 @@ func (c *Client) dialUpstreamWithCache(hostname string, port uint16, alpn []stri
 
 	if !found {
 		logger.Debugf("[%s] domain cache miss for %s, dialing directly.", hostname, hostname)
-		conn, err := c.dialUpstream(nil)
+		conn, err := c.dialUpstream([12]byte{})
 		if err == nil {
 			_, err = domainCache.Set(context.Background(), hostname)
 		}
@@ -75,16 +76,7 @@ func (c *Client) dialUpstreamWithCache(hostname string, port uint16, alpn []stri
 		return nil, false, fmt.Errorf("[%s] Unsupported ALPN, connection rejected", hostname)
 	}
 
-	random, err := cache.EncodeRandom(id, port, alpnCode, c.encryptionKey)
-	if err != nil {
-		conn, err := c.dialUpstream(nil)
-		return conn, false, err
-	}
-
-	var customRandom [32]byte
-	copy(customRandom[:], random[:])
-
-	conn, err := c.dialUpstream(&customRandom)
+	conn, err := c.dialUpstream(EncodeMetaData(id, port, alpnCode))
 	if err != nil {
 		return conn, false, err
 	}
@@ -92,7 +84,7 @@ func (c *Client) dialUpstreamWithCache(hostname string, port uint16, alpn []stri
 	return conn, true, nil
 }
 
-func (c *Client) dialUpstream(customRandom *[32]byte) (net.Conn, error) {
+func (c *Client) dialUpstream(meta [12]byte) (net.Conn, error) {
 	rawConn, err := c.dialer.Dial("tcp", c.serverAddr)
 	if err != nil {
 		return nil, err
@@ -110,9 +102,7 @@ func (c *Client) dialUpstream(customRandom *[32]byte) (net.Conn, error) {
 		Show:        logger.IsDebugEnabled(),
 	}
 
-	if customRandom != nil {
-		config.Random = customRandom[:]
-	}
+	copy(config.MetaData[:], meta[:])
 
 	conn, err := reality.UClient(rawConn, config, context.Background(), host)
 	if err == nil {
@@ -125,4 +115,13 @@ func (c *Client) dialUpstream(customRandom *[32]byte) (net.Conn, error) {
 	}
 
 	return conn, nil
+}
+
+func EncodeMetaData(id [8]byte, port uint16, alpnCode byte) [12]byte {
+	var data [12]byte
+	data[0] = 1
+	copy(data[1:9], id[:])
+	binary.BigEndian.PutUint16(data[9:11], port)
+	data[11] = alpnCode
+	return data
 }

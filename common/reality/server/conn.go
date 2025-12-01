@@ -25,20 +25,14 @@ import (
 // A Conn represents a secured connection.
 // It implements the net.Conn interface.
 type Conn struct {
-	AuthKey       []byte
-	ClientVer     [3]byte
-	ClientTime    time.Time
-	ClientShortId [8]byte
-
-	// Stores custom random bytes from the peer
-	ClientCustomRandom [19]byte  // For server to store client's custom random
-	ServerCustomRandom [10]byte  // For client to store server's custom random
+	AuthKey    []byte
+	ClientTime time.Time
 
 	// constant
 	conn        net.Conn
 	isClient    bool
 	handshakeFn func(context.Context) error // (*Conn).clientHandshake or serverHandshake
-	quic *quicState // nil for non-QUIC connections
+	quic        *quicState                  // nil for non-QUIC connections
 
 	// isHandshakeComplete is true if the connection is currently transferring
 	// application data (i.e. is not currently processing a handshake).
@@ -1252,7 +1246,7 @@ func (c *Conn) unmarshalHandshakeMessage(data []byte, transcript transcriptHash)
 	if transcript != nil {
 		transcript.Write(data)
 	}
-	
+
 	return m, nil
 }
 

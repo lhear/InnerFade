@@ -72,13 +72,12 @@ func Start(cfg *config.Config) error {
 	serverConfig := &reality.Config{
 		PrivateKey:  server.privateKey,
 		ServerNames: cfg.ServerNames,
-		ShortIds:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0}},
 		Show:        logger.IsDebugEnabled(),
 		Dest:        cfg.Dest,
 		Type:        "tcp",
 	}
 
-	serverConfig.GetServerRandomForClient = server.handleClientRandom
+	serverConfig.GetServerMetaDataForClient = server.handleClientMetaData
 
 	listener, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {

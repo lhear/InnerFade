@@ -22,35 +22,33 @@ func TestRealityConnection(t *testing.T) {
 	}
 	publicKey := privateKey.PublicKey()
 
-	clientRandomExpected := make([]byte, 32)
-	serverRandomExpected := make([]byte, 32)
+	var clientMetaData [12]byte
+	var serverMetaData [12]byte
 
-	rand.Read(clientRandomExpected)
-	rand.Read(serverRandomExpected)
+	rand.Read(clientMetaData[:])
+	rand.Read(serverMetaData[:])
 
-	clientRandomReceivedChan := make(chan []byte, 1)
+	clientMetaDataReceivedChan := make(chan []byte, 1)
 
 	serverConfig := &reality.Config{
 		PrivateKey:  privateKey.Bytes(),
 		ServerNames: []string{"www.apple.com"},
-		ShortIds:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0}},
 		Show:        false,
 		Dest:        "www.apple.com:443",
 		Type:        "tcp",
+		MaxTimeDiff: 60 * 1000,
 	}
 
-	serverConfig.GetServerRandomForClient = func(remoteAddr string, clientRandom []byte) (serverRandom []byte) {
-
-		if !EqualBytes(clientRandom, clientRandomExpected) {
-			t.Errorf("Server received unexpected client random. Expected: %v, Got: %v", clientRandomExpected, clientRandom)
+	serverConfig.GetServerMetaDataForClient = func(remoteAddr string, data []byte) []byte {
+		if !EqualBytes(data, clientMetaData[:]) {
+			t.Errorf("Server received unexpected client MetaData. Expected: %v, Got: %v", clientMetaData, data)
 		} else {
-
 			select {
-			case clientRandomReceivedChan <- clientRandom:
+			case clientMetaDataReceivedChan <- data:
 			default:
 			}
 		}
-		return serverRandomExpected
+		return serverMetaData[:]
 	}
 
 	clientConfig := &reality.Config{
@@ -58,7 +56,7 @@ func TestRealityConnection(t *testing.T) {
 		PublicKey:   publicKey.Bytes(),
 		Fingerprint: "chrome",
 		Show:        false,
-		Random:      clientRandomExpected,
+		MetaData:    clientMetaData,
 	}
 
 	listener, err := net.Listen("tcp", "127.0.0.1:12345")
@@ -134,25 +132,24 @@ func TestRealityConnection(t *testing.T) {
 		}
 
 		if rConn, ok := realityClientConn.(*reality.UConn); ok {
-			serverRandom := rConn.HandshakeState.ServerHello.Random
-			if !EqualBytes(serverRandom, serverRandomExpected) {
-				t.Errorf("Client received unexpected server random. Expected: %v, Got: %v", serverRandomExpected, serverRandom)
+			if !EqualBytes(rConn.MetaData[:], serverMetaData[:]) {
+				t.Errorf("Client received unexpected server MetaData. Expected: %v, Got: %v", serverMetaData, rConn.MetaData[:])
 			} else {
-				t.Log("Client successfully verified server random.")
+				t.Log("Client successfully verified server MetaData.")
 			}
 		} else {
-			t.Error("Cannot verify server random because reality.UClient returned type cannot be asserted.")
+			t.Error("Cannot verify server MetaData because reality.UClient returned type cannot be asserted.")
 		}
 
 		select {
-		case received := <-clientRandomReceivedChan:
-			if EqualBytes(received, clientRandomExpected) {
-				t.Log("Server successfully received and verified client random.")
+		case received := <-clientMetaDataReceivedChan:
+			if EqualBytes(received, clientMetaData[:]) {
+				t.Log("Server successfully received and verified client MetaData.")
 			} else {
-				t.Errorf("Server received unexpected client random in GetServerRandomForClient. Expected: %v, Got: %v", clientRandomExpected, received)
+				t.Errorf("Server received unexpected client MetaData in GetServerMetaDataForClient. Expected: %v, Got: %v", clientMetaData, received)
 			}
 		case <-time.After(500 * time.Millisecond):
-			t.Error("Timeout waiting for server to receive and process client random.")
+			t.Error("Timeout waiting for server to receive and process client MetaData.")
 		}
 
 		message := "GET / HTTP/1.1\r\nHost: localhost\r\nUser-Agent: Reality-Test/1.0\r\n\r\n"

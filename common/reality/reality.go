@@ -36,44 +36,32 @@ type Conn struct {
 }
 
 type Config struct {
-	Show                     bool
-	Dest                     string
-	Type                     string
-	Xver                     uint64
-	ServerNames              []string
-	PrivateKey               []byte
-	MinClientVer             []byte
-	MaxClientVer             []byte
-	MaxTimeDiff              uint64
-	ShortIds                 [][]byte
-	Fingerprint              string
-	ServerName               string
-	PublicKey                []byte
-	ShortId                  []byte
-	Mldsa65Verify            []byte
-	SpiderX                  string
-	SpiderY                  []int64
-	MasterKeyLog             string
-	Random                   []byte
-	GetServerRandomForClient func(remoteAddr string, clientRandom []byte) (serverRandom []byte)
+	Show                       bool
+	Dest                       string
+	Type                       string
+	ServerNames                []string
+	PrivateKey                 []byte
+	MaxTimeDiff                uint64
+	Fingerprint                string
+	ServerName                 string
+	PublicKey                  []byte
+	SpiderX                    string
+	SpiderY                    []int64
+	MasterKeyLog               string
+	MetaData                   [12]byte
+	GetServerMetaDataForClient func(remoteAddr string, data []byte) []byte
 }
 
 func (c *Config) GetREALITYConfig() *reality.Config {
 	var dialer net.Dialer
 	config := &reality.Config{
-		DialContext: dialer.DialContext,
-
-		Show: c.Show,
-		Type: c.Type,
-		Dest: c.Dest,
-		Xver: byte(c.Xver),
-
-		PrivateKey:   c.PrivateKey,
-		MinClientVer: c.MinClientVer,
-		MaxClientVer: c.MaxClientVer,
-		MaxTimeDiff:  time.Duration(c.MaxTimeDiff) * time.Millisecond,
-
-		NextProtos:                  nil, // should be nil
+		DialContext:                 dialer.DialContext,
+		Show:                        c.Show,
+		Type:                        c.Type,
+		Dest:                        c.Dest,
+		PrivateKey:                  c.PrivateKey,
+		MaxTimeDiff:                 time.Duration(c.MaxTimeDiff) * time.Millisecond,
+		NextProtos:                  nil,
 		SessionTicketsDisabled:      true,
 		DynamicRecordSizingDisabled: true,
 	}
@@ -81,11 +69,7 @@ func (c *Config) GetREALITYConfig() *reality.Config {
 	for _, serverName := range c.ServerNames {
 		config.ServerNames[serverName] = true
 	}
-	config.ShortIds = make(map[[8]byte]bool)
-	for _, shortId := range c.ShortIds {
-		config.ShortIds[*(*[8]byte)(shortId)] = true
-	}
-	config.GetServerRandomForClient = c.GetServerRandomForClient
+	config.GetServerMetaDataForClient = c.GetServerMetaDataForClient
 	return config
 }
 
@@ -117,6 +101,7 @@ type UConn struct {
 	ServerName string
 	AuthKey    []byte
 	Verified   bool
+	MetaData   [12]byte
 }
 
 func (c *UConn) HandshakeAddress() net.Addr {
@@ -135,16 +120,20 @@ func (c *UConn) HandshakeAddress() net.Addr {
 }
 
 func (c *UConn) VerifyPeerCertificate(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-	if c.Config.Show {
-		localAddr := c.LocalAddr().String()
-		fmt.Printf("REALITY localAddr: %v\tis using ML-DSA-65 for cert's extra verification: %v\n", localAddr, len(c.Config.Mldsa65Verify) > 0)
-	}
 	p, _ := reflect.TypeOf(c.Conn).Elem().FieldByName("peerCertificates")
 	certs := *(*([]*x509.Certificate))(unsafe.Pointer(uintptr(unsafe.Pointer(c.Conn)) + p.Offset))
 	if pub, ok := certs[0].PublicKey.(ed25519.PublicKey); ok {
 		h := hmac.New(sha512.New, c.AuthKey)
 		h.Write(pub)
 		if bytes.Equal(h.Sum(nil), certs[0].Signature) {
+			aead, err := newSimpleAesGcm(c.AuthKey)
+			if err != nil {
+				return err
+			}
+			_, err = aead.Open(c.MetaData[:0], c.HandshakeState.Hello.Random[:12], c.HandshakeState.ServerHello.Random[:28], nil)
+			if err != nil {
+				return err
+			}
 			c.Verified = true
 			return nil
 		}
@@ -172,7 +161,6 @@ func UClient(c net.Conn, config *Config, ctx context.Context, destAddr string) (
 		ServerName:             config.ServerName,
 		InsecureSkipVerify:     true,
 		SessionTicketsDisabled: true,
-		// Note: KeyLogWriterFromConfig removed as it requires external dependency
 	}
 	if utlsConfig.ServerName == "" {
 		utlsConfig.ServerName = destAddr
@@ -184,17 +172,10 @@ func UClient(c net.Conn, config *Config, ctx context.Context, destAddr string) (
 	{
 		uConn.BuildHandshakeState()
 		hello := uConn.HandshakeState.Hello
-		copy(hello.Random, config.Random)
-		copy(hello.Raw[6:], hello.Random)
 		hello.SessionId = make([]byte, 32)
 		copy(hello.Raw[39:], hello.SessionId)
-		// Use simple version numbers
-		hello.SessionId[0] = 1
-		hello.SessionId[1] = 0
-		hello.SessionId[2] = 0
-		hello.SessionId[3] = 0 // reserved
-		binary.BigEndian.PutUint32(hello.SessionId[4:], uint32(time.Now().Unix()))
-		copy(hello.SessionId[8:], config.ShortId)
+		copy(hello.SessionId, config.MetaData[:])
+		binary.BigEndian.PutUint32(hello.SessionId[12:], uint32(time.Now().Unix()))
 		if config.Show {
 			fmt.Printf("REALITY localAddr: %v\thello.SessionId[:16]: %v\n", localAddr, hello.SessionId[:16])
 		}
@@ -337,12 +318,7 @@ var (
 	dot  = []byte(".")
 )
 
-// Simple AES-GCM implementation
-type simpleAesGcm struct {
-	gcm cipher.AEAD
-}
-
-func newSimpleAesGcm(key []byte) (*simpleAesGcm, error) {
+func newSimpleAesGcm(key []byte) (cipher.AEAD, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
@@ -351,11 +327,7 @@ func newSimpleAesGcm(key []byte) (*simpleAesGcm, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &simpleAesGcm{gcm: gcm}, nil
-}
-
-func (s *simpleAesGcm) Seal(dst, nonce, plaintext, additionalData []byte) []byte {
-	return s.gcm.Seal(dst, nonce, plaintext, additionalData)
+	return gcm, nil
 }
 
 func getPathLocked(paths map[string]struct{}) string {

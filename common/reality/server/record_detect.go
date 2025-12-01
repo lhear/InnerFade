@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pires/go-proxyproto"
 	utls "github.com/refraction-networking/utls"
 )
 
@@ -30,11 +29,6 @@ func DetectPostHandshakeRecordsLens(config *Config) {
 					target, err := net.Dial("tcp", config.Dest)
 					if err != nil {
 						return
-					}
-					if config.Xver == 1 || config.Xver == 2 {
-						if _, err = proxyproto.HeaderProxyFromAddrs(config.Xver, target.LocalAddr(), target.RemoteAddr()).WriteTo(target); err != nil {
-							return
-						}
 					}
 					detectConn := &DetectConn{
 						Conn: target,

@@ -553,21 +553,13 @@ type Config struct {
 	Show bool
 	Type string
 	Dest string
-	Xver byte
 
-	ServerNames  map[string]bool
-	PrivateKey   []byte
-	MinClientVer []byte
-	MaxClientVer []byte
-	MaxTimeDiff  time.Duration
-	ShortIds     map[[8]byte]bool
+	ServerNames map[string]bool
+	PrivateKey  []byte
+	MaxTimeDiff time.Duration
+	MetaData    [12]byte
 
-	GetServerRandomForClient func(remoteAddr string, clientRandom []byte) (serverRandom []byte)
-
-	Mldsa65Key []byte
-
-	// Custom random bytes for extending protocol functionality
-	Random [32]byte // 32 bytes for random
+	GetServerMetaDataForClient func(remoteAddr string, data []byte) []byte
 
 	LimitFallbackUpload   LimitFallback
 	LimitFallbackDownload LimitFallback
@@ -979,13 +971,10 @@ func (c *Config) Clone() *Config {
 		Show:                                c.Show,
 		Type:                                c.Type,
 		Dest:                                c.Dest,
-		Xver:                                c.Xver,
 		ServerNames:                         c.ServerNames,
 		PrivateKey:                          c.PrivateKey,
-		MinClientVer:                        c.MinClientVer,
-		MaxClientVer:                        c.MaxClientVer,
 		MaxTimeDiff:                         c.MaxTimeDiff,
-		ShortIds:                            c.ShortIds,
+		MetaData:                            c.MetaData,
 		LimitFallbackUpload:                 c.LimitFallbackUpload,
 		LimitFallbackDownload:               c.LimitFallbackDownload,
 		Rand:                                c.Rand,
@@ -1020,7 +1009,6 @@ func (c *Config) Clone() *Config {
 		EncryptedClientHelloConfigList:      c.EncryptedClientHelloConfigList,
 		EncryptedClientHelloRejectionVerify: c.EncryptedClientHelloRejectionVerify,
 		EncryptedClientHelloKeys:            c.EncryptedClientHelloKeys,
-		Random:                              c.Random,
 		sessionTicketKeys:                   c.sessionTicketKeys,
 		autoSessionTicketKeys:               c.autoSessionTicketKeys,
 	}

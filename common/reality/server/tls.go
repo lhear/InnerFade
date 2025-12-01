@@ -171,14 +171,6 @@ func Server(ctx context.Context, conn net.Conn, config *Config) (*Conn, error) {
 		return nil, errors.New("REALITY: failed to dial dest: " + err.Error())
 	}
 
-	if config.Xver == 1 || config.Xver == 2 {
-		if _, err = proxyproto.HeaderProxyFromAddrs(config.Xver, conn.RemoteAddr(), conn.LocalAddr()).WriteTo(target); err != nil {
-			target.Close()
-			conn.Close()
-			return nil, errors.New("REALITY: failed to send PROXY protocol: " + err.Error())
-		}
-	}
-
 	raw := conn
 	if pc, ok := conn.(*proxyproto.Conn); ok {
 		raw = pc.Raw() // for TCP splicing in io.Copy()
@@ -210,9 +202,6 @@ func Server(ctx context.Context, conn net.Conn, config *Config) (*Conn, error) {
 			hs.clientHello, _, err = hs.c.readClientHello(context.Background()) // TODO: Change some rules in this function.
 			if copying || err != nil || hs.c.vers != VersionTLS13 || !config.ServerNames[hs.clientHello.serverName] {
 				break
-			}
-			if config.GetServerRandomForClient != nil {
-				copy(config.Random[:], config.GetServerRandomForClient(conn.RemoteAddr().String(), hs.clientHello.random))
 			}
 			var peerPub []byte
 			for _, keyShare := range hs.clientHello.keyShares {
@@ -249,19 +238,15 @@ func Server(ctx context.Context, conn net.Conn, config *Config) (*Conn, error) {
 					break
 				}
 				copy(hs.clientHello.sessionId, ciphertext)
-				copy(hs.c.ClientVer[:], plainText)
-				hs.c.ClientTime = time.Unix(int64(binary.BigEndian.Uint32(plainText[4:])), 0)
-				copy(hs.c.ClientShortId[:], plainText[8:])
+				hs.c.ClientTime = time.Unix(int64(binary.BigEndian.Uint32(plainText[12:])), 0)
 				if config.Show {
-					fmt.Printf("REALITY remoteAddr: %v\ths.c.ClientVer: %v\n", remoteAddr, hs.c.ClientVer)
 					fmt.Printf("REALITY remoteAddr: %v\ths.c.ClientTime: %v\n", remoteAddr, hs.c.ClientTime)
-					fmt.Printf("REALITY remoteAddr: %v\ths.c.ClientShortId: %v\n", remoteAddr, hs.c.ClientShortId)
 				}
-				if (config.MinClientVer == nil || Value(hs.c.ClientVer[:]...) >= Value(config.MinClientVer...)) &&
-					(config.MaxClientVer == nil || Value(hs.c.ClientVer[:]...) <= Value(config.MaxClientVer...)) &&
-					(config.MaxTimeDiff == 0 || time.Since(hs.c.ClientTime).Abs() <= config.MaxTimeDiff) &&
-					(config.ShortIds[hs.c.ClientShortId]) {
+				if config.MaxTimeDiff == 0 || time.Since(hs.c.ClientTime).Abs() <= config.MaxTimeDiff {
 					hs.c.conn = conn
+					if config.GetServerMetaDataForClient != nil {
+						copy(config.MetaData[:], config.GetServerMetaDataForClient(conn.RemoteAddr().String(), plainText[:12]))
+					}
 				}
 				break
 			}
@@ -362,7 +347,9 @@ func Server(ctx context.Context, conn net.Conn, config *Config) (*Conn, error) {
 							!(hs.hello.serverShare.group == X25519MLKEM768 && len(hs.hello.serverShare.data) == mlkem.CiphertextSize768+32)) {
 						break f
 					}
-					copy(hs.hello.random, config.Random[:])
+					block, _ := aes.NewCipher(hs.c.AuthKey)
+					aead, _ := cipher.NewGCM(block)
+					aead.Seal(hs.hello.random[:0], hs.clientHello.random[:12], config.MetaData[:], nil)
 				}
 				hs.c.out.handshakeLen[i] = handshakeLen
 				s2cSaved = s2cSaved[handshakeLen:]
@@ -832,37 +819,4 @@ func parsePrivateKey(der []byte) (crypto.PrivateKey, error) {
 	}
 
 	return nil, errors.New("tls: failed to parse private key")
-}
-
-// GetClientCustomRandom returns the client's custom random bytes (19 bytes)
-// This is available on the server side after successful handshake
-func (c *Conn) GetClientCustomRandom() *[19]byte {
-	return &c.ClientCustomRandom
-}
-
-// GetServerCustomRandom returns the server's custom random bytes (10 bytes)
-// This is available on the client side after successful handshake
-func (c *Conn) GetServerCustomRandom() *[10]byte {
-	return &c.ServerCustomRandom
-}
-
-// HasCustomRandom indicates whether custom random bytes were exchanged during handshake
-func (c *Conn) HasCustomRandom() bool {
-	// Check if we have potentially valid custom random (not all zeros)
-	if c.isClient {
-		// On client side, check if server custom random is set
-		for _, b := range c.ServerCustomRandom {
-			if b != 0 {
-				return true
-			}
-		}
-	} else {
-		// On server side, check if client custom random is set
-		for _, b := range c.ClientCustomRandom {
-			if b != 0 {
-				return true
-			}
-		}
-	}
-	return false
 }

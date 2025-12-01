@@ -3,9 +3,7 @@ package cache
 import (
 	"bufio"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -16,8 +14,6 @@ import (
 	"strings"
 	"sync"
 	"unsafe"
-
-	"innerfade/common/crypto"
 )
 
 const (
@@ -505,47 +501,4 @@ func IsValidDomain(domain string) bool {
 		return true
 	}
 	return false
-}
-
-func EncodeRandom(id [IDLength]byte, port uint16, alpnCode byte, encryptionKey []byte) ([32]byte, error) {
-	var random [32]byte
-	copy(random[0:8], id[:])
-	binary.BigEndian.PutUint16(random[8:10], port)
-	random[10] = alpnCode
-
-	hash := sha256.Sum256(random[0:11])
-	copy(random[11:19], hash[0:8])
-
-	if _, err := rand.Read(random[19:32]); err != nil {
-		return [32]byte{}, fmt.Errorf("random nonce error: %w", err)
-	}
-
-	encryptedData, err := crypto.AESEncryptWithNonce(random[0:19], encryptionKey, random[19:32])
-	if err != nil {
-		return [32]byte{}, fmt.Errorf("encryption error: %w", err)
-	}
-
-	copy(random[0:19], encryptedData)
-	return random, nil
-}
-
-func DecodeRandom(random [32]byte, encryptionKey []byte) (id [IDLength]byte, port uint16, alpnCode byte, ok bool) {
-	decryptedData, err := crypto.AESDecryptWithNonce(random[0:19], encryptionKey, random[19:32])
-	if err != nil {
-		return [IDLength]byte{}, 0, 0, false
-	}
-
-	expectedHash := decryptedData[11:19]
-	calculatedHashFull := sha256.Sum256(decryptedData[0:11])
-	calculatedHashTruncated := calculatedHashFull[0:8]
-
-	if subtle.ConstantTimeCompare(calculatedHashTruncated, expectedHash) != 1 {
-		return [IDLength]byte{}, 0, 0, false
-	}
-
-	copy(id[:], decryptedData[0:8])
-	port = binary.BigEndian.Uint16(decryptedData[8:10])
-	alpnCode = decryptedData[10]
-	ok = true
-	return
 }
