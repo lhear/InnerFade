@@ -1,8 +1,6 @@
 package client
 
 import (
-	"crypto/hkdf"
-	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
@@ -20,13 +18,12 @@ import (
 var domainCache *cache.DomainCache
 
 type Client struct {
-	config        *config.Config
-	ca            *common.CA
-	certCache     *CertCache
-	serverAddr    string
-	encryptionKey []byte
-	publicKey     []byte
-	dialer        *net.Dialer
+	config     *config.Config
+	ca         *common.CA
+	certCache  *CertCache
+	serverAddr string
+	publicKey  []byte
+	dialer     *net.Dialer
 }
 
 type cachedCert struct {
@@ -107,11 +104,6 @@ func Start(cfg *config.Config) error {
 	}
 
 	client.publicKey, _ = base64.RawURLEncoding.DecodeString(cfg.PublicKey)
-
-	client.encryptionKey, err = hkdf.Extract(sha256.New, client.publicKey, []byte("InnerFade"))
-	if err != nil {
-		return err
-	}
 
 	proxy := &http.Server{
 		Addr:        cfg.ListenAddr,

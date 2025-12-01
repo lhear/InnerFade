@@ -1,9 +1,6 @@
 package server
 
 import (
-	"crypto/ecdh"
-	"crypto/hkdf"
-	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"net"
@@ -31,7 +28,6 @@ type Server struct {
 	dialer         *net.Dialer
 	proxyDialer    proxy.Dialer
 	handshakeCache sync.Map
-	encryptionKey  []byte
 	privateKey     []byte
 }
 
@@ -62,12 +58,6 @@ func Start(cfg *config.Config) error {
 	}
 
 	server.privateKey, _ = base64.RawURLEncoding.DecodeString(cfg.PrivateKey)
-
-	p, _ := ecdh.X25519().NewPrivateKey(server.privateKey)
-	server.encryptionKey, err = hkdf.Extract(sha256.New, p.PublicKey().Bytes(), []byte("InnerFade"))
-	if err != nil {
-		return err
-	}
 
 	serverConfig := &reality.Config{
 		PrivateKey:  server.privateKey,
