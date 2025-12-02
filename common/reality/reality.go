@@ -48,7 +48,8 @@ type Config struct {
 	SpiderX                    string
 	SpiderY                    []int64
 	MasterKeyLog               string
-	MetaData                   [12]byte
+	ClientMetaData             [32 + 12]byte
+	ServerMetaData             [12]byte
 	GetServerMetaDataForClient func(remoteAddr string, data []byte) []byte
 }
 
@@ -97,11 +98,11 @@ func Server(c net.Conn, config *Config) (net.Conn, error) {
 
 type UConn struct {
 	*utls.UConn
-	Config     *Config
-	ServerName string
-	AuthKey    []byte
-	Verified   bool
-	MetaData   [12]byte
+	Config         *Config
+	ServerName     string
+	AuthKey        []byte
+	Verified       bool
+	ServerMetaData [12]byte
 }
 
 func (c *UConn) HandshakeAddress() net.Addr {
@@ -130,7 +131,7 @@ func (c *UConn) VerifyPeerCertificate(rawCerts [][]byte, verifiedChains [][]*x50
 			if err != nil {
 				return err
 			}
-			_, err = aead.Open(c.MetaData[:0], c.HandshakeState.Hello.Random[:12], c.HandshakeState.ServerHello.Random[:28], nil)
+			_, err = aead.Open(c.ServerMetaData[:0], []byte("c0bbe77b11a5"), c.HandshakeState.ServerHello.Random[:28], nil)
 			if err != nil {
 				return err
 			}
@@ -174,8 +175,10 @@ func UClient(c net.Conn, config *Config, ctx context.Context, destAddr string) (
 		hello := uConn.HandshakeState.Hello
 		hello.SessionId = make([]byte, 32)
 		copy(hello.Raw[39:], hello.SessionId)
-		copy(hello.SessionId, config.MetaData[:])
-		binary.BigEndian.PutUint32(hello.SessionId[12:], uint32(time.Now().Unix()))
+		copy(hello.Raw[6:], hello.SessionId)
+		copy(hello.SessionId, config.ClientMetaData[:32])
+		copy(hello.Random, config.ClientMetaData[32:])
+		binary.BigEndian.PutUint32(hello.Random[12:], uint32(time.Now().Unix()))
 		if config.Show {
 			fmt.Printf("REALITY localAddr: %v\thello.SessionId[:16]: %v\n", localAddr, hello.SessionId[:16])
 		}
@@ -194,7 +197,7 @@ func UClient(c net.Conn, config *Config, ctx context.Context, destAddr string) (
 		if uConn.AuthKey == nil {
 			return nil, fmt.Errorf("REALITY: SharedKey == nil")
 		}
-		if _, err := hkdf.New(sha256.New, uConn.AuthKey, hello.Random[:20], []byte("REALITY")).Read(uConn.AuthKey); err != nil {
+		if _, err := hkdf.New(sha256.New, uConn.AuthKey, []byte("cbeeff335e29"), []byte("REALITY")).Read(uConn.AuthKey); err != nil {
 			return nil, err
 		}
 		// Simplified AES-GCM implementation instead of xray crypto
@@ -205,8 +208,14 @@ func UClient(c net.Conn, config *Config, ctx context.Context, destAddr string) (
 		if config.Show {
 			fmt.Printf("REALITY localAddr: %v\tuConn.AuthKey[:16]: %v\tAEAD\n", localAddr, uConn.AuthKey[:16])
 		}
-		aead.Seal(hello.SessionId[:0], hello.Random[20:], hello.SessionId[:16], hello.Raw)
+		buf := make([]byte, 64)
+		copy(buf[:32], hello.SessionId)
+		copy(buf[32:], hello.Random)
+		aead.Seal(buf[:0], []byte("e936915be949"), buf[:48], hello.Raw)
+		copy(hello.SessionId, buf[:32])
 		copy(hello.Raw[39:], hello.SessionId)
+		copy(hello.Random, buf[32:])
+		copy(hello.Raw[6:], hello.Random)
 	}
 	if err := uConn.HandshakeContext(ctx); err != nil {
 		return nil, err

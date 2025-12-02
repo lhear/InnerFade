@@ -49,7 +49,7 @@ func (c *Client) handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	logger.Infof("[%s] handling HTTPS request for %s:%d", r.RemoteAddr, hostname, port)
-	serverConn, cacheUsed, err := c.dialUpstreamWithCache(hostname, uint16(port), browserALPNs)
+	serverConn, metaDataUsed, err := c.dialUpstreamWithMetaData(hostname, uint16(port), browserALPNs)
 	if err != nil {
 		logger.Errorf("[%s] failed to connect to upstream server for %s: %v", r.RemoteAddr, hostname, err)
 		return
@@ -57,10 +57,10 @@ func (c *Client) handleConnect(w http.ResponseWriter, r *http.Request) {
 	defer serverConn.Close()
 
 	var serverALPNs []string
-	needHandshake := !cacheUsed
+	needHandshake := !metaDataUsed
 
-	if cacheUsed {
-		serverMetaData := serverConn.(*reality.UConn).MetaData
+	if metaDataUsed {
+		serverMetaData := serverConn.(*reality.UConn).ServerMetaData
 
 		switch serverMetaData[0] {
 		case 1:
@@ -117,7 +117,7 @@ func (c *Client) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	r.RequestURI = ""
 
-	serverConn, err := c.dialUpstream([12]byte{})
+	serverConn, err := c.dialUpstream([44]byte{})
 	if err != nil {
 		logger.Errorf("[%s] HTTP proxy connection failed to %s: %v", r.RemoteAddr, r.URL.String(), err)
 		http.Error(w, "proxy connection failed", http.StatusBadGateway)

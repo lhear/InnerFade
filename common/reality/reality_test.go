@@ -1,4 +1,4 @@
-package testing
+package reality
 
 import (
 	"context"
@@ -9,8 +9,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"innerfade/common/reality"
 )
 
 func TestRealityConnection(t *testing.T) {
@@ -22,7 +20,7 @@ func TestRealityConnection(t *testing.T) {
 	}
 	publicKey := privateKey.PublicKey()
 
-	var clientMetaData [12]byte
+	var clientMetaData [12 + 32]byte
 	var serverMetaData [12]byte
 
 	rand.Read(clientMetaData[:])
@@ -30,10 +28,10 @@ func TestRealityConnection(t *testing.T) {
 
 	clientMetaDataReceivedChan := make(chan []byte, 1)
 
-	serverConfig := &reality.Config{
+	serverConfig := &Config{
 		PrivateKey:  privateKey.Bytes(),
 		ServerNames: []string{"www.apple.com"},
-		Show:        false,
+		Show:        true,
 		Dest:        "www.apple.com:443",
 		Type:        "tcp",
 		MaxTimeDiff: 60 * 1000,
@@ -51,12 +49,12 @@ func TestRealityConnection(t *testing.T) {
 		return serverMetaData[:]
 	}
 
-	clientConfig := &reality.Config{
-		ServerName:  "www.apple.com",
-		PublicKey:   publicKey.Bytes(),
-		Fingerprint: "chrome",
-		Show:        false,
-		MetaData:    clientMetaData,
+	clientConfig := &Config{
+		ServerName:     "www.apple.com",
+		PublicKey:      publicKey.Bytes(),
+		Fingerprint:    "chrome",
+		Show:           true,
+		ClientMetaData: clientMetaData,
 	}
 
 	listener, err := net.Listen("tcp", "127.0.0.1:12345")
@@ -90,7 +88,7 @@ func TestRealityConnection(t *testing.T) {
 				defer serverWg.Done()
 				defer conn.Close()
 
-				rConn, err := reality.Server(conn, serverConfig)
+				rConn, err := Server(conn, serverConfig)
 				if err != nil {
 					t.Errorf("REALITY server handshake failed: %v", err)
 					return
@@ -126,14 +124,14 @@ func TestRealityConnection(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		realityClientConn, err := reality.UClient(clientConn, clientConfig, ctx, "localhost")
+		realityClientConn, err := UClient(clientConn, clientConfig, ctx, "localhost")
 		if err != nil {
 			t.Fatalf("REALITY client connection failed: %v", err)
 		}
 
-		if rConn, ok := realityClientConn.(*reality.UConn); ok {
-			if !EqualBytes(rConn.MetaData[:], serverMetaData[:]) {
-				t.Errorf("Client received unexpected server MetaData. Expected: %v, Got: %v", serverMetaData, rConn.MetaData[:])
+		if rConn, ok := realityClientConn.(*UConn); ok {
+			if !EqualBytes(rConn.ServerMetaData[:], serverMetaData[:]) {
+				t.Errorf("Client received unexpected server MetaData. Expected: %v, Got: %v", serverMetaData, rConn.ServerMetaData[:])
 			} else {
 				t.Log("Client successfully verified server MetaData.")
 			}

@@ -16,6 +16,7 @@ import (
 
 	"innerfade/common"
 	"innerfade/common/cache"
+	"innerfade/common/compress"
 	"innerfade/logger"
 )
 
@@ -41,21 +42,27 @@ func (s *Server) acceptConnection(conn net.Conn) {
 func (s *Server) handleClientMetaData(remoteAddr string, metaData []byte) (serverMetaData []byte) {
 	serverMetaData = make([]byte, 12)
 
-	useCache, id, port, alpnCode := DecodeMetaData(metaData)
-	logger.Debugf("[%s] decoded client MetaData - ID: %d, Port: %d, ALPN Code: 0x%x", remoteAddr, id, port, alpnCode)
-	if !useCache {
+	useCache, useDomain, id, domain, port, alpnCode, err := DecodeMetaData(metaData)
+	logger.Debugf("[%s] decoded client MetaData - ID: %d, Domain: %s, Port: %d, ALPN Code: 0x%x", remoteAddr, id, domain, port, alpnCode)
+	if !useCache && !useDomain {
+		if err != nil {
+			logger.Warnf("[%s] %v", remoteAddr, err)
+		}
 		return
 	}
 
-	domain, found, err := domainCache.Get(context.Background(), id)
-	if err != nil {
-		logger.Error(err)
-		return
-	}
-	if !found {
-		logger.Debugf("[%s] domain %s not found in cache, sending server cache miss status", remoteAddr, domain)
-		serverMetaData[0] = 2
-		return
+	if useCache {
+		d, found, err := domainCache.Get(context.Background(), id)
+		if err != nil {
+			logger.Error(err)
+			return
+		}
+		if !found {
+			logger.Debugf("[%s] domain %s not found in cache, sending server cache miss status", remoteAddr, d)
+			serverMetaData[0] = 2
+			return
+		}
+		domain = d
 	}
 
 	targetAlpn, _ := common.ByteToAlpn(alpnCode)
@@ -200,10 +207,26 @@ func delHopHeaders(header http.Header) {
 	}
 }
 
-func DecodeMetaData(metaData []byte) (useCache bool, id [8]byte, port uint16, alpnCode byte) {
-	useCache = metaData[0] == 1
-	copy(id[:], metaData[1:9])
-	port = binary.BigEndian.Uint16(metaData[9:11])
-	alpnCode = metaData[11]
+func DecodeMetaData(metaData []byte) (useCache bool, useDomain bool, id [8]byte, domain string, port uint16, alpnCode byte, err error) {
+	useCache = false
+	useDomain = false
+	switch metaData[0] {
+	case 1:
+		useCache = true
+		copy(id[:], metaData[1:9])
+		port = binary.BigEndian.Uint16(metaData[9:11])
+		alpnCode = metaData[11]
+	case 2:
+		domainLen := metaData[1]
+		domain, err = compress.Decompress(metaData[2 : 2+domainLen])
+		if err != nil {
+			return
+		}
+		len := 2 + domainLen
+		port = binary.BigEndian.Uint16(metaData[len : len+2])
+		len += 2
+		alpnCode = metaData[len]
+		useDomain = true
+	}
 	return
 }

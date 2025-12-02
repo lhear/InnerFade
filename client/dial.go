@@ -11,6 +11,7 @@ import (
 
 	"innerfade/common"
 	"innerfade/common/cache"
+	"innerfade/common/compress"
 	"innerfade/common/reality"
 	"innerfade/logger"
 )
@@ -50,9 +51,22 @@ func (c *Client) hijackConn(w http.ResponseWriter) (net.Conn, error) {
 	return conn, nil
 }
 
-func (c *Client) dialUpstreamWithCache(hostname string, port uint16, alpn []string) (net.Conn, bool, error) {
+func (c *Client) dialUpstreamWithMetaData(hostname string, port uint16, alpn []string) (net.Conn, bool, error) {
 	if !cache.IsValidDomain(hostname) {
 		return nil, false, fmt.Errorf("invalid domain: %s", hostname)
+	}
+
+	alpnCode, ok := common.AlpnToByte(alpn)
+	if !ok {
+		return nil, false, fmt.Errorf("[%s] Unsupported ALPN, connection rejected", hostname)
+	}
+
+	if metaData, ok := EncodeMetaDataByDomain(hostname, port, alpnCode); ok {
+		conn, err := c.dialUpstream(metaData)
+		if err != nil {
+			return conn, false, err
+		}
+		return conn, true, nil
 	}
 
 	id := cache.GenerateID(hostname)
@@ -64,19 +78,15 @@ func (c *Client) dialUpstreamWithCache(hostname string, port uint16, alpn []stri
 
 	if !found {
 		logger.Debugf("[%s] domain cache miss for %s, dialing directly.", hostname, hostname)
-		conn, err := c.dialUpstream([12]byte{})
+		conn, err := c.dialUpstream([44]byte{})
 		if err == nil {
 			_, err = domainCache.Set(context.Background(), hostname)
 		}
 		return conn, false, err
 	}
 	logger.Debugf("[%s] domain cache hit for %s", hostname, hostname)
-	alpnCode, ok := common.AlpnToByte(alpn)
-	if !ok {
-		return nil, false, fmt.Errorf("[%s] Unsupported ALPN, connection rejected", hostname)
-	}
 
-	conn, err := c.dialUpstream(EncodeMetaData(id, port, alpnCode))
+	conn, err := c.dialUpstream(EncodeMetaDataById(id, port, alpnCode))
 	if err != nil {
 		return conn, false, err
 	}
@@ -84,7 +94,7 @@ func (c *Client) dialUpstreamWithCache(hostname string, port uint16, alpn []stri
 	return conn, true, nil
 }
 
-func (c *Client) dialUpstream(meta [12]byte) (net.Conn, error) {
+func (c *Client) dialUpstream(metaData [44]byte) (net.Conn, error) {
 	rawConn, err := c.dialer.Dial("tcp", c.serverAddr)
 	if err != nil {
 		return nil, err
@@ -102,7 +112,7 @@ func (c *Client) dialUpstream(meta [12]byte) (net.Conn, error) {
 		Show:        logger.IsDebugEnabled(),
 	}
 
-	copy(config.MetaData[:], meta[:])
+	copy(config.ClientMetaData[:], metaData[:])
 
 	conn, err := reality.UClient(rawConn, config, context.Background(), host)
 	if err == nil {
@@ -117,8 +127,30 @@ func (c *Client) dialUpstream(meta [12]byte) (net.Conn, error) {
 	return conn, nil
 }
 
-func EncodeMetaData(id [8]byte, port uint16, alpnCode byte) [12]byte {
-	var data [12]byte
+func EncodeMetaDataByDomain(domainStr string, port uint16, alpnCode byte) ([44]byte, bool) {
+	var data [44]byte
+	domain, err := compress.Compress(domainStr)
+	if err != nil {
+		return data, false
+	}
+	domainLen := len(domain)
+	if domainLen+5 > 44 {
+		return data, false
+	}
+	logger.Debugf("Domain: %s | Compression Ratio: %.2f (Original: %d bytes, Compressed: %d bytes)",
+		domainStr, float64(domainLen)/float64(len(domainStr)), len(domainStr), domainLen)
+	data[0] = 2
+	data[1] = byte(domainLen)
+	copy(data[2:], domain)
+	len := 2 + domainLen
+	binary.BigEndian.PutUint16(data[len:len+2], port)
+	len += 2
+	data[len] = alpnCode
+	return data, true
+}
+
+func EncodeMetaDataById(id [8]byte, port uint16, alpnCode byte) [44]byte {
+	var data [44]byte
 	data[0] = 1
 	copy(data[1:9], id[:])
 	binary.BigEndian.PutUint16(data[9:11], port)

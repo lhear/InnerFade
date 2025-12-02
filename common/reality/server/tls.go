@@ -222,7 +222,7 @@ func Server(ctx context.Context, conn net.Conn, config *Config) (*Conn, error) {
 				if hs.c.AuthKey, err = curve25519.X25519(config.PrivateKey, peerPub); err != nil {
 					break
 				}
-				if _, err = hkdf.New(sha256.New, hs.c.AuthKey, hs.clientHello.random[:20], []byte("REALITY")).Read(hs.c.AuthKey); err != nil {
+				if _, err = hkdf.New(sha256.New, hs.c.AuthKey, []byte("cbeeff335e29"), []byte("REALITY")).Read(hs.c.AuthKey); err != nil {
 					break
 				}
 				block, _ := aes.NewCipher(hs.c.AuthKey)
@@ -230,22 +230,25 @@ func Server(ctx context.Context, conn net.Conn, config *Config) (*Conn, error) {
 				if config.Show {
 					fmt.Printf("REALITY remoteAddr: %v\ths.c.AuthKey[:16]: %v\tAEAD: %T\n", remoteAddr, hs.c.AuthKey[:16], aead)
 				}
-				ciphertext := make([]byte, 32)
-				plainText := make([]byte, 32)
-				copy(ciphertext, hs.clientHello.sessionId)
-				copy(hs.clientHello.sessionId, plainText) // hs.clientHello.sessionId points to hs.clientHello.raw[39:]
-				if _, err = aead.Open(plainText[:0], hs.clientHello.random[20:], ciphertext, hs.clientHello.original); err != nil {
+				ciphertext := make([]byte, 64)
+				plainText := make([]byte, 64)
+				copy(ciphertext[:32], hs.clientHello.sessionId)
+				copy(ciphertext[32:], hs.clientHello.random)
+				copy(hs.clientHello.sessionId, plainText)
+				copy(hs.clientHello.random, plainText)
+				if _, err = aead.Open(plainText[:0], []byte("e936915be949"), ciphertext, hs.clientHello.original); err != nil {
 					break
 				}
-				copy(hs.clientHello.sessionId, ciphertext)
-				hs.c.ClientTime = time.Unix(int64(binary.BigEndian.Uint32(plainText[12:])), 0)
+				copy(hs.clientHello.sessionId, ciphertext[:32])
+				copy(hs.clientHello.random, ciphertext[32:])
+				hs.c.ClientTime = time.Unix(int64(binary.BigEndian.Uint32(plainText[44:])), 0)
 				if config.Show {
 					fmt.Printf("REALITY remoteAddr: %v\ths.c.ClientTime: %v\n", remoteAddr, hs.c.ClientTime)
 				}
 				if config.MaxTimeDiff == 0 || time.Since(hs.c.ClientTime).Abs() <= config.MaxTimeDiff {
 					hs.c.conn = conn
 					if config.GetServerMetaDataForClient != nil {
-						copy(config.MetaData[:], config.GetServerMetaDataForClient(conn.RemoteAddr().String(), plainText[:12]))
+						copy(config.ServerMetaData[:], config.GetServerMetaDataForClient(conn.RemoteAddr().String(), plainText[:44]))
 					}
 				}
 				break
@@ -349,7 +352,7 @@ func Server(ctx context.Context, conn net.Conn, config *Config) (*Conn, error) {
 					}
 					block, _ := aes.NewCipher(hs.c.AuthKey)
 					aead, _ := cipher.NewGCM(block)
-					aead.Seal(hs.hello.random[:0], hs.clientHello.random[:12], config.MetaData[:], nil)
+					aead.Seal(hs.hello.random[:0], []byte("c0bbe77b11a5"), config.ServerMetaData[:], nil)
 				}
 				hs.c.out.handshakeLen[i] = handshakeLen
 				s2cSaved = s2cSaved[handshakeLen:]
