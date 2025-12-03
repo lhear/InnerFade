@@ -7,8 +7,10 @@ import (
 	"strings"
 )
 
-const charset = "abcdefghijklmnopqrstuvwxyz0123456789-."
-const base = 38
+const (
+	charset = "abcdefghijklmnopqrstuvwxyz0123456789-."
+	base    = 38
+)
 
 const (
 	max3Char    = base * base * base
@@ -19,27 +21,17 @@ const (
 	offsetDict  = offset1Char + max1Char
 )
 
-var commonDict = []string{
-	".com", ".net", ".org", ".edu", ".gov",
-	".mil", ".int", ".top", ".xyz", ".vip",
-	"www.", "wap.", "api.", "blog.", "mail.",
-	"google", "apple", "image", "video",
-	"document", "shop", "cloud", "static",
-	"source", "book", "mark", "play",
-	"voice", "visit", "chat", "studio", "profile",
-	"assets", "content", "user", "-api", "-cdn",
-	"online", "open", "help", "dashboard",
-	"amazon", "fast", "web.", "project",
-	"state", "login", "client", "speed", "test",
-	"microsoft", "live", "mozilla", "storage",
+type trieNode struct {
+	children [base]*trieNode
+	code     uint16
+	isEnd    bool
 }
 
 var (
 	charToIdxTable [256]int8
 	idxToCharTable [base]byte
-	dictBytes      [][]byte
-	dictCodes      []uint16
-	idxToDict      map[uint16]string
+	dictList       []string
+	trieRoot       *trieNode
 )
 
 func init() {
@@ -48,84 +40,102 @@ func init() {
 	}
 	for i := 0; i < len(charset); i++ {
 		c := charset[i]
-		charToIdxTable[c] = int8(i)
+		idx := int8(i)
+		charToIdxTable[c] = idx
 		idxToCharTable[i] = c
+		if c >= 'a' && c <= 'z' {
+			charToIdxTable[c-32] = idx
+		}
 	}
 	maxDictCapacity := 65536 - offsetDict
 	if len(commonDict) > maxDictCapacity {
-		panic("Dictionary size exceeds remaining coding space")
+		panic(fmt.Sprintf("Dictionary size (%d) exceeds remaining coding space (%d)", len(commonDict), maxDictCapacity))
 	}
-	sort.Slice(commonDict, func(i, j int) bool {
-		return len(commonDict[i]) > len(commonDict[j])
+	sortedDict := make([]string, len(commonDict))
+	copy(sortedDict, commonDict)
+	sort.Slice(sortedDict, func(i, j int) bool {
+		return len(sortedDict[i]) > len(sortedDict[j])
 	})
-	dictBytes = make([][]byte, len(commonDict))
-	dictCodes = make([]uint16, len(commonDict))
-	idxToDict = make(map[uint16]string, len(commonDict))
-	for i, s := range commonDict {
+	dictList = sortedDict
+	trieRoot = &trieNode{}
+	for i, s := range sortedDict {
 		code := uint16(offsetDict + i)
-		dictBytes[i] = []byte(s)
-		dictCodes[i] = code
-		idxToDict[code] = s
+		addStringToTrie(trieRoot, s, code)
+	}
+}
+
+func addStringToTrie(root *trieNode, s string, code uint16) {
+	node := root
+	for i := 0; i < len(s); i++ {
+		charIdx := charToIdxTable[s[i]]
+		if charIdx < 0 {
+			continue
+		}
+		if node.children[charIdx] == nil {
+			node.children[charIdx] = &trieNode{}
+		}
+		node = node.children[charIdx]
+	}
+	if !node.isEnd {
+		node.isEnd = true
+		node.code = code
 	}
 }
 
 func Compress(domain string) ([]byte, error) {
-	domain = strings.ToLower(domain)
 	n := len(domain)
-	buf := make([]byte, 0, n/2+2)
+	buf := make([]byte, 0, n)
 	i := 0
 	for i < n {
-		matchFound := false
-		currentStr := domain[i:]
-		for k, dBytes := range dictBytes {
-			dLen := len(dBytes)
-			if len(currentStr) >= dLen {
-				if currentStr[:dLen] == string(dBytes) {
-					code := dictCodes[k]
-					buf = append(buf, byte(code>>8), byte(code))
-					i += dLen
-					matchFound = true
-					break
-				}
+		matchedLen := 0
+		var matchedCode uint16
+		node := trieRoot
+		for k := i; k < n; k++ {
+			charIdx := charToIdxTable[domain[k]]
+			if charIdx < 0 {
+				return nil, fmt.Errorf("invalid character '%c' at index %d", domain[k], k)
+			}
+			node = node.children[charIdx]
+			if node == nil {
+				break
+			}
+			if node.isEnd {
+				matchedLen = k - i + 1
+				matchedCode = node.code
 			}
 		}
-		if matchFound {
+		if matchedLen > 0 {
+			buf = append(buf, byte(matchedCode>>8), byte(matchedCode))
+			i += matchedLen
 			continue
 		}
 		remaining := n - i
+		v1 := int(charToIdxTable[domain[i]])
+		if v1 < 0 {
+			return nil, fmt.Errorf("invalid character '%c' at index %d", domain[i], i)
+		}
 		if remaining >= 3 {
-			v1 := charToIdxTable[domain[i]]
-			v2 := charToIdxTable[domain[i+1]]
-			v3 := charToIdxTable[domain[i+2]]
-			if v1 < 0 || v2 < 0 || v3 < 0 {
-				return nil, fmt.Errorf("invalid character at index %d", i)
+			v2 := int(charToIdxTable[domain[i+1]])
+			v3 := int(charToIdxTable[domain[i+2]])
+			if v2 < 0 || v3 < 0 {
+
+				return nil, fmt.Errorf("invalid character sequence at index %d", i)
 			}
-			val := uint16(int(v1)*max2Char + int(v2)*max1Char + int(v3))
+			val := uint16(v1*max2Char + v2*max1Char + v3)
 			buf = append(buf, byte(val>>8), byte(val))
 			i += 3
-			continue
-		}
-		if remaining == 2 {
-			v1 := charToIdxTable[domain[i]]
-			v2 := charToIdxTable[domain[i+1]]
-			if v1 < 0 || v2 < 0 {
-				return nil, fmt.Errorf("invalid character at index %d", i)
+		} else if remaining == 2 {
+			v2 := int(charToIdxTable[domain[i+1]])
+			if v2 < 0 {
+				return nil, fmt.Errorf("invalid character at index %d", i+1)
 			}
-			val := uint16(offset2Char + int(v1)*max1Char + int(v2))
+			val := uint16(offset2Char + v1*max1Char + v2)
 			buf = append(buf, byte(val>>8), byte(val))
 			i += 2
-			continue
-		}
-
-		if remaining == 1 {
-			v1 := charToIdxTable[domain[i]]
-			if v1 < 0 {
-				return nil, fmt.Errorf("invalid character at index %d", i)
-			}
-			val := uint16(offset1Char + int(v1))
+		} else {
+			val := uint16(offset1Char + v1)
 			buf = append(buf, byte(val>>8), byte(val))
 			i += 1
-			continue
 		}
 	}
 	return buf, nil
@@ -140,19 +150,26 @@ func Decompress(data []byte) (string, error) {
 	for i := 0; i < len(data); i += 2 {
 		code := uint16(data[i])<<8 | uint16(data[i+1])
 		if code < offset2Char {
-			sb.WriteByte(idxToCharTable[code/max2Char])
-			sb.WriteByte(idxToCharTable[(code/max1Char)%base])
-			sb.WriteByte(idxToCharTable[code%base])
+			v1 := code / max2Char
+			rem := code % max2Char
+			v2 := rem / max1Char
+			v3 := rem % max1Char
+			sb.WriteByte(idxToCharTable[v1])
+			sb.WriteByte(idxToCharTable[v2])
+			sb.WriteByte(idxToCharTable[v3])
 		} else if code < offset1Char {
 			val := code - offset2Char
-			sb.WriteByte(idxToCharTable[val/base])
-			sb.WriteByte(idxToCharTable[val%base])
+			v1 := val / base
+			v2 := val % base
+			sb.WriteByte(idxToCharTable[v1])
+			sb.WriteByte(idxToCharTable[v2])
 		} else if code < offsetDict {
 			val := code - offset1Char
 			sb.WriteByte(idxToCharTable[val])
 		} else {
-			if s, ok := idxToDict[code]; ok {
-				sb.WriteString(s)
+			dictIdx := int(code - offsetDict)
+			if dictIdx < len(dictList) {
+				sb.WriteString(dictList[dictIdx])
 			} else {
 				return "", fmt.Errorf("unknown dictionary code: %d", code)
 			}
