@@ -42,7 +42,7 @@ type Config struct {
 	ServerNames                []string
 	PrivateKey                 []byte
 	MaxTimeDiff                uint64
-	Fingerprint                string
+	Fingerprint                utls.ClientHelloID
 	ServerName                 string
 	PublicKey                  []byte
 	SpiderX                    string
@@ -169,7 +169,7 @@ func UClient(c net.Conn, config *Config, ctx context.Context, destAddr string) (
 	uConn.ServerName = utlsConfig.ServerName
 
 	// Use default fingerprint if none provided
-	uConn.UConn = utls.UClient(c, utlsConfig, utls.HelloChrome_Auto)
+	uConn.UConn = utls.UClient(c, utlsConfig, config.Fingerprint)
 	{
 		uConn.BuildHandshakeState()
 		hello := uConn.HandshakeState.Hello
@@ -191,7 +191,7 @@ func UClient(c net.Conn, config *Config, ctx context.Context, destAddr string) (
 			ecdhe = uConn.HandshakeState.State13.KeyShareKeys.MlkemEcdhe
 		}
 		if ecdhe == nil {
-			return nil, fmt.Errorf("Current fingerprint does not support TLS 1.3, REALITY handshake cannot establish.")
+			return nil, fmt.Errorf("current fingerprint does not support TLS 1.3, REALITY handshake cannot establish")
 		}
 		uConn.AuthKey, _ = ecdhe.ECDH(publicKey)
 		if uConn.AuthKey == nil {
@@ -200,7 +200,6 @@ func UClient(c net.Conn, config *Config, ctx context.Context, destAddr string) (
 		if _, err := hkdf.New(sha256.New, uConn.AuthKey, []byte("cbeeff335e29"), []byte("REALITY")).Read(uConn.AuthKey); err != nil {
 			return nil, err
 		}
-		// Simplified AES-GCM implementation instead of xray crypto
 		aead, err := newSimpleAesGcm(uConn.AuthKey)
 		if err != nil {
 			return nil, err
@@ -362,4 +361,23 @@ func getPathLocked(paths map[string]struct{}) string {
 var maps struct {
 	sync.Mutex
 	maps map[string]map[string]struct{}
+}
+
+func ParseFingerprintStr(fingerprint string) (utls.ClientHelloID, error) {
+	switch strings.ToLower(fingerprint) {
+	case "chrome":
+		return utls.HelloChrome_Auto, nil
+	case "firefox":
+		return utls.HelloFirefox_Auto, nil
+	case "safari":
+		return utls.HelloSafari_Auto, nil
+	case "ios":
+		return utls.HelloIOS_Auto, nil
+	case "android":
+		return utls.HelloAndroid_11_OkHttp, nil
+	case "":
+		return utls.HelloChrome_Auto, nil
+	default:
+		return utls.ClientHelloID{}, fmt.Errorf("unsupported uTLS fingerprint: %s", fingerprint)
+	}
 }

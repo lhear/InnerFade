@@ -11,19 +11,23 @@ import (
 
 	"innerfade/common"
 	"innerfade/common/cache"
+	"innerfade/common/reality"
 	"innerfade/config"
 	"innerfade/logger"
+
+	utls "github.com/refraction-networking/utls"
 )
 
 var domainCache *cache.DomainCache
 
 type Client struct {
-	config     *config.Config
-	ca         *common.CA
-	certCache  *CertCache
-	serverAddr string
-	publicKey  []byte
-	dialer     *net.Dialer
+	config      *config.Config
+	ca          *common.CA
+	certCache   *CertCache
+	serverAddr  string
+	publicKey   []byte
+	dialer      *net.Dialer
+	fingerprint utls.ClientHelloID
 }
 
 type cachedCert struct {
@@ -101,6 +105,11 @@ func Start(cfg *config.Config) error {
 			Timeout:   5 * time.Second,
 			KeepAlive: 30 * time.Second,
 		},
+	}
+
+	client.fingerprint, err = reality.ParseFingerprintStr(cfg.Fingerprint)
+	if err != nil {
+		return err
 	}
 
 	client.publicKey, _ = base64.RawURLEncoding.DecodeString(cfg.PublicKey)

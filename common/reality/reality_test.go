@@ -49,10 +49,15 @@ func TestRealityConnection(t *testing.T) {
 		return serverMetaData[:]
 	}
 
+	fingerprint, err := ParseFingerprintStr("chrome")
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
 	clientConfig := &Config{
 		ServerName:     "www.apple.com",
 		PublicKey:      publicKey.Bytes(),
-		Fingerprint:    "chrome",
+		Fingerprint:    fingerprint,
 		Show:           true,
 		ClientMetaData: clientMetaData,
 	}

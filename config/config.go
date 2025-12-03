@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"innerfade/common/reality"
 	"net"
 	"os"
 )
@@ -22,6 +23,7 @@ type Config struct {
 	ServerName  string   `json:"server_name"`
 	Socks5Proxy string   `json:"socks5_proxy"`
 	LogLevel    string   `json:"log_level,omitempty"`
+	Fingerprint string   `json:"fingerprint,omitempty"`
 }
 
 func LoadFromJSON(filePath string) (*Config, error) {
@@ -80,6 +82,9 @@ func (c *Config) Validate() error {
 		}
 		if c.ServerName == "" {
 			return fmt.Errorf("ServerName cannot be empty in client mode")
+		}
+		if _, err := reality.ParseFingerprintStr(c.Fingerprint); err != nil {
+			return err
 		}
 	case "server":
 		if c.PrivateKey == "" {

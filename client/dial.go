@@ -108,7 +108,7 @@ func (c *Client) dialUpstream(metaData [44]byte) (net.Conn, error) {
 	config := &reality.Config{
 		ServerName:  c.config.ServerName,
 		PublicKey:   c.publicKey,
-		Fingerprint: "chrome",
+		Fingerprint: c.fingerprint,
 		Show:        logger.IsDebugEnabled(),
 	}
 
