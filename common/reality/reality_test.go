@@ -20,7 +20,7 @@ func TestRealityConnection(t *testing.T) {
 	}
 	publicKey := privateKey.PublicKey()
 
-	var clientMetaData [12 + 32]byte
+	var clientMetaData [48]byte
 	var serverMetaData [12]byte
 
 	rand.Read(clientMetaData[:])

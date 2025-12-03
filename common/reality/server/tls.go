@@ -226,7 +226,7 @@ func Server(ctx context.Context, conn net.Conn, config *Config) (*Conn, error) {
 					break
 				}
 				block, _ := aes.NewCipher(hs.c.AuthKey)
-				aead, _ := cipher.NewGCM(block)
+				aead, _ := cipher.NewGCMWithTagSize(block, 12)
 				if config.Show {
 					fmt.Printf("REALITY remoteAddr: %v\ths.c.AuthKey[:16]: %v\tAEAD: %T\n", remoteAddr, hs.c.AuthKey[:16], aead)
 				}
@@ -241,14 +241,14 @@ func Server(ctx context.Context, conn net.Conn, config *Config) (*Conn, error) {
 				}
 				copy(hs.clientHello.sessionId, ciphertext[:32])
 				copy(hs.clientHello.random, ciphertext[32:])
-				hs.c.ClientTime = time.Unix(int64(binary.BigEndian.Uint32(plainText[44:])), 0)
+				hs.c.ClientTime = time.Unix(int64(binary.BigEndian.Uint32(plainText[48:])), 0)
 				if config.Show {
 					fmt.Printf("REALITY remoteAddr: %v\ths.c.ClientTime: %v\n", remoteAddr, hs.c.ClientTime)
 				}
 				if config.MaxTimeDiff == 0 || time.Since(hs.c.ClientTime).Abs() <= config.MaxTimeDiff {
 					hs.c.conn = conn
 					if config.GetServerMetaDataForClient != nil {
-						copy(config.ServerMetaData[:], config.GetServerMetaDataForClient(conn.RemoteAddr().String(), plainText[:44]))
+						copy(config.ServerMetaData[:], config.GetServerMetaDataForClient(conn.RemoteAddr().String(), plainText[:48]))
 					}
 				}
 				break
@@ -351,7 +351,7 @@ func Server(ctx context.Context, conn net.Conn, config *Config) (*Conn, error) {
 						break f
 					}
 					block, _ := aes.NewCipher(hs.c.AuthKey)
-					aead, _ := cipher.NewGCM(block)
+					aead, _ := cipher.NewGCMWithTagSize(block, 12)
 					aead.Seal(hs.hello.random[:0], []byte("c0bbe77b11a5"), config.ServerMetaData[:], nil)
 				}
 				hs.c.out.handshakeLen[i] = handshakeLen

@@ -117,7 +117,7 @@ func (c *Client) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	r.RequestURI = ""
 
-	serverConn, err := c.dialUpstream([44]byte{})
+	serverConn, err := c.dialUpstream([48]byte{})
 	if err != nil {
 		logger.Errorf("[%s] HTTP proxy connection failed to %s: %v", r.RemoteAddr, r.URL.String(), err)
 		http.Error(w, "proxy connection failed", http.StatusBadGateway)

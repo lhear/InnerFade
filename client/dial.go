@@ -78,7 +78,7 @@ func (c *Client) dialUpstreamWithMetaData(hostname string, port uint16, alpn []s
 
 	if !found {
 		logger.Debugf("[%s] domain cache miss for %s, dialing directly.", hostname, hostname)
-		conn, err := c.dialUpstream([44]byte{})
+		conn, err := c.dialUpstream([48]byte{})
 		if err == nil {
 			_, err = domainCache.Set(context.Background(), hostname)
 		}
@@ -94,7 +94,7 @@ func (c *Client) dialUpstreamWithMetaData(hostname string, port uint16, alpn []s
 	return conn, true, nil
 }
 
-func (c *Client) dialUpstream(metaData [44]byte) (net.Conn, error) {
+func (c *Client) dialUpstream(metaData [48]byte) (net.Conn, error) {
 	rawConn, err := c.dialer.Dial("tcp", c.serverAddr)
 	if err != nil {
 		return nil, err
@@ -127,14 +127,14 @@ func (c *Client) dialUpstream(metaData [44]byte) (net.Conn, error) {
 	return conn, nil
 }
 
-func EncodeMetaDataByDomain(domainStr string, port uint16, alpnCode byte) ([44]byte, bool) {
-	var data [44]byte
+func EncodeMetaDataByDomain(domainStr string, port uint16, alpnCode byte) ([48]byte, bool) {
+	var data [48]byte
 	domain, err := compress.Compress(domainStr)
 	if err != nil {
 		return data, false
 	}
 	domainLen := len(domain)
-	if domainLen+5 > 44 {
+	if domainLen+5 > 48 {
 		return data, false
 	}
 	logger.Debugf("Domain: %s | Compression Ratio: %.2f (Original: %d bytes, Compressed: %d bytes)",
@@ -149,8 +149,8 @@ func EncodeMetaDataByDomain(domainStr string, port uint16, alpnCode byte) ([44]b
 	return data, true
 }
 
-func EncodeMetaDataById(id [8]byte, port uint16, alpnCode byte) [44]byte {
-	var data [44]byte
+func EncodeMetaDataById(id [8]byte, port uint16, alpnCode byte) [48]byte {
+	var data [48]byte
 	data[0] = 1
 	copy(data[1:9], id[:])
 	binary.BigEndian.PutUint16(data[9:11], port)

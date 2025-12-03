@@ -557,7 +557,7 @@ type Config struct {
 	ServerNames    map[string]bool
 	PrivateKey     []byte
 	MaxTimeDiff    time.Duration
-	ClientMetaData [32 + 12]byte
+	ClientMetaData [48]byte
 	ServerMetaData [12]byte
 
 	GetServerMetaDataForClient func(remoteAddr string, data []byte) []byte
