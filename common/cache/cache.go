@@ -19,7 +19,7 @@ import (
 const (
 	IDLength        = 8
 	IndexSlotSize   = 8
-	MinIndexSlots   = 1 << 18
+	MinIndexSlots   = 1 << 9
 	MaxDataFileSize = 1 << 32
 	ProbeBatchSize  = 16
 	DataHeaderSize  = IDLength + 1
