@@ -16,7 +16,7 @@ var GlobalPostHandshakeRecordsLens sync.Map
 
 func DetectPostHandshakeRecordsLens(config *Config) {
 	for sni := range config.ServerNames {
-		for alpn := range 3 { // 0, 1, 2
+		for alpn := range 3 {
 			key := config.Dest + " " + sni + " " + strconv.Itoa(alpn)
 			if _, loaded := GlobalPostHandshakeRecordsLens.LoadOrStore(key, false); !loaded {
 				go func() {
@@ -46,7 +46,7 @@ func DetectPostHandshakeRecordsLens(config *Config) {
 						nextProtos = nil
 					}
 					uConn := utls.UClient(detectConn, &utls.Config{
-						ServerName: sni, // needs new loopvar behaviour
+						ServerName: sni,
 						NextProtos: nextProtos,
 					}, fingerprint)
 					if err = uConn.Handshake(); err != nil {
