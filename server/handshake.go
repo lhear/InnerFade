@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -13,6 +12,8 @@ import (
 	"innerfade/common"
 	"innerfade/common/cache"
 	"innerfade/logger"
+
+	utls "github.com/refraction-networking/utls"
 )
 
 func (s *Server) handleCustomProtocol(conn net.Conn) {
@@ -55,7 +56,6 @@ func (s *Server) handleCustomProtocol(conn net.Conn) {
 }
 
 func (s *Server) readHandshake(conn net.Conn) (string, []string, error) {
-
 	lenBuf := make([]byte, 1)
 	if _, err := io.ReadFull(conn, lenBuf); err != nil {
 		return "", nil, err
@@ -104,7 +104,6 @@ func (s *Server) readHandshake(conn net.Conn) (string, []string, error) {
 }
 
 func (s *Server) sendNegotiationResponse(conn net.Conn, success bool, alpn string) error {
-
 	buf := make([]byte, 0, 350)
 
 	if !success {
@@ -139,38 +138,32 @@ func (s *Server) sendNegotiationResponse(conn net.Conn, success bool, alpn strin
 	return err
 }
 
-// dialTarget creates a connection to the target with specified ALPNs
 func (s *Server) dialTarget(address string, alpns []string) (net.Conn, string, error) {
 	logger.Debugf("dialing target: %s with ALPNs: %v", address, alpns)
 	host, _, err := net.SplitHostPort(address)
 	if err != nil {
 		host = address
 	}
-
 	if !cache.IsValidDomain(host) {
 		return nil, "", fmt.Errorf("invalid domain for target dial: %s", host)
 	}
-	tlsConfig := &tls.Config{
+	tlsConfig := &utls.Config{
 		ServerName: host,
 		NextProtos: alpns,
 	}
-
+	var conn net.Conn
 	if s.config.Socks5Proxy != "" {
-		conn, err := s.proxyDialer.Dial("tcp", address)
-		if err != nil {
-			return nil, "", err
-		}
-		tlsConn := tls.Client(conn, tlsConfig)
-		if err := tlsConn.Handshake(); err != nil {
-			conn.Close()
-			return nil, "", err
-		}
-		return tlsConn, tlsConn.ConnectionState().NegotiatedProtocol, nil
+		conn, err = s.proxyDialer.Dial("tcp", address)
+	} else {
+		conn, err = net.Dial("tcp", address)
 	}
-
-	conn, err := tls.DialWithDialer(s.dialer, "tcp", address, tlsConfig)
 	if err != nil {
 		return nil, "", err
 	}
-	return conn, conn.ConnectionState().NegotiatedProtocol, nil
+	tlsConn := utls.UClient(conn, tlsConfig, utls.HelloChrome_Auto)
+	if err = tlsConn.Handshake(); err != nil {
+		conn.Close()
+		return nil, "", err
+	}
+	return tlsConn, tlsConn.ConnectionState().NegotiatedProtocol, nil
 }

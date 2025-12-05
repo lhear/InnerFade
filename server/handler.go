@@ -26,7 +26,6 @@ var hopHeaders = []string{
 }
 
 func (s *Server) acceptConnection(conn net.Conn) {
-
 	if val, loaded := s.handshakeCache.LoadAndDelete(conn.RemoteAddr().String()); loaded {
 		dest := val.(*Dest)
 		if dest != nil {
@@ -189,7 +188,6 @@ func (s *Server) handleHTTPRequest(conn net.Conn) {
 }
 
 func isHTTPMethod(s string) bool {
-
 	if len(s) < 3 {
 		return false
 	}
