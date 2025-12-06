@@ -10,7 +10,7 @@ InnerFade is a network proxy tool that leverages the [REALITY](https://github.co
 
 ## Getting Started
 Requires Go 1.24+.
-1.  **Build:** `go build -ldflags "-s -w" -o innerfade ./cmd`
+1.  **Build:** `go build -trimpath -ldflags "-s -w" -o innerfade ./cmd`
 2.  **Configuration:** Use separate client/server JSON config files (see `examples/`).
 3.  **Generate Keys & CA:**
     *   X25519 Key Pair: `./innerfade -generate-keypair`

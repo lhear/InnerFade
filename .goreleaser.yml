@@ -1,0 +1,127 @@
+project_name: innerfade
+version: 2
+builds:
+  - id: android
+    main: ./cmd
+    goos:
+      - android
+    goarch:
+      - arm64
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - "-s -w"
+      - "-X main.Version={{.Tag}}"
+
+  - id: linux
+    main: ./cmd
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+      - mips
+      - mipsle
+      - mips64
+      - mips64le
+      - loong64
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - "-s -w"
+      - "-X main.Version={{.Tag}}"
+
+  - id: windows
+    main: ./cmd
+    goos:
+      - windows
+    goarch:
+      - arm64
+      - amd64
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - "-s -w"
+      - "-X main.Version={{.Tag}}"
+
+  - id: darwin
+    main: ./cmd
+    goos:
+      - darwin
+    goarch:
+      - arm64
+      - amd64
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - "-s -w"
+      - "-X main.Version={{.Tag}}"
+
+  - id: freebsd
+    main: ./cmd
+    goos:
+      - freebsd
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - "-s -w"
+      - "-X main.Version={{.Tag}}"
+
+  - id: netbsd
+    main: ./cmd
+    goos:
+      - netbsd
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - "-s -w"
+      - "-X main.Version={{.Tag}}"
+
+  - id: openbsd
+    main: ./cmd
+    goos:
+      - openbsd
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - "-s -w"
+      - "-X main.Version={{.Tag}}"
+
+archives:
+  - formats:
+    - zip
+    name_template: "innerfade_{{.Os}}_{{.Arch}}"
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  github:
+    owner: lhear
+    name: innerfade

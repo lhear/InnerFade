@@ -17,6 +17,10 @@ import (
 )
 
 var (
+	Version = "unknown"
+)
+
+var (
 	configFile      = flag.String("c", "", "Path to the JSON configuration file.")
 	generateKeypair = flag.Bool("generate-keypair", false, "Generate an X25519 private/public key pair.")
 	generateCA      = flag.Bool("generate-ca", false, "Generate a new CA certificate and private key.")
@@ -24,10 +28,16 @@ var (
 	caKeyPath       = flag.String("ca-key", "", "Path to save the generated CA private key (required when using -generate-ca).")
 	importDomains   = flag.String("import-domains", "", "Import domain list from file to the cache specified in config.")
 	exportDomains   = flag.String("export-domains", "", "Export domain list from the cache specified in config to file.")
+	version         = flag.Bool("version", false, "Show version information.")
 )
 
 func main() {
 	flag.Parse()
+
+	if *version {
+		fmt.Printf("Version: %s\n", Version)
+		return
+	}
 
 	if *generateKeypair {
 		privateKey, err := ecdh.X25519().GenerateKey(rand.Reader)
