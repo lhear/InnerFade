@@ -611,23 +611,18 @@ func (p *dnsParser) skip(n int) error {
 }
 
 func (p *dnsParser) readName() (string, error) {
-
 	var (
 		sb       strings.Builder
 		jumped   = false
-		limit    = 0
+		ptrCount = 0
 		currPos  = p.pos
 		finalPos = -1
 	)
-
-	for limit < 10 {
-		limit++
+	for {
 		if currPos >= len(p.data) {
 			return "", ErrInvalidResp
 		}
-
 		b := p.data[currPos]
-
 		if b == 0 {
 			currPos++
 			if !jumped {
@@ -641,8 +636,11 @@ func (p *dnsParser) readName() (string, error) {
 			}
 			return s, nil
 		}
-
 		if (b & 0xC0) == 0xC0 {
+			ptrCount++
+			if ptrCount > 10 {
+				return "", errors.New("dns name loop detected")
+			}
 			if currPos+2 > len(p.data) {
 				return "", ErrInvalidResp
 			}
@@ -654,25 +652,23 @@ func (p *dnsParser) readName() (string, error) {
 			jumped = true
 			continue
 		}
-
 		labelLen := int(b)
 		currPos++
 		if currPos+labelLen > len(p.data) {
 			return "", ErrInvalidResp
 		}
-
 		if sb.Len() > 0 {
 			sb.WriteByte('.')
 		}
 		sb.Write(p.data[currPos : currPos+labelLen])
-
 		currPos += labelLen
-
 		if !jumped {
 			p.pos = currPos
 		}
+		if sb.Len() > 255 {
+			return "", errors.New("domain name too long")
+		}
 	}
-	return "", errors.New("dns name loop detected")
 }
 
 func parseResponse(data []byte, reqID uint16) (*dnsResponse, error) {
