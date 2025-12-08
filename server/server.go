@@ -10,6 +10,7 @@ import (
 	"golang.org/x/net/proxy"
 
 	"innerfade/common/cache"
+	"innerfade/common/dns"
 	"innerfade/common/reality"
 	"innerfade/config"
 	"innerfade/logger"
@@ -27,6 +28,7 @@ type Server struct {
 	config         *config.Config
 	dialer         *net.Dialer
 	proxyDialer    proxy.Dialer
+	dnsResolver    *dns.ECSResolver
 	handshakeCache sync.Map
 	privateKey     []byte
 }
@@ -53,8 +55,14 @@ func Start(cfg *config.Config) error {
 			return fmt.Errorf("failed to initialize SOCKS5 proxy: %w", err)
 		}
 	} else {
-
 		server.proxyDialer = proxy.Direct
+	}
+
+	if cfg.DNSServer != "" {
+		logger.Infof("configuring DNS resolver: %s", cfg.DNSServer)
+		server.dnsResolver, _ = dns.NewECSResolver(cfg.DNSServer)
+	} else {
+		server.dnsResolver = nil
 	}
 
 	server.privateKey, _ = base64.RawURLEncoding.DecodeString(cfg.PrivateKey)

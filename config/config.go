@@ -4,9 +4,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"innerfade/common/dns"
 	"innerfade/common/reality"
-	"net"
 	"os"
+
+	"golang.org/x/net/proxy"
 )
 
 type Config struct {
@@ -22,6 +24,7 @@ type Config struct {
 	ServerNames []string `json:"server_names"`
 	ServerName  string   `json:"server_name"`
 	Socks5Proxy string   `json:"socks5_proxy"`
+	DNSServer   string   `json:"dns_server,omitempty"`
 	LogLevel    string   `json:"log_level,omitempty"`
 	Fingerprint string   `json:"fingerprint,omitempty"`
 }
@@ -96,11 +99,15 @@ func (c *Config) Validate() error {
 		if len(c.ServerNames) == 0 {
 			return fmt.Errorf("ServerNames cannot be empty in server mode")
 		}
-
 		if c.Socks5Proxy != "" {
-			host, port, err := net.SplitHostPort(c.Socks5Proxy)
-			if err != nil || host == "" || port == "" {
-				return fmt.Errorf("invalid SOCKS5 proxy address format, should be host:port format")
+			_, err := proxy.SOCKS5("tcp", c.Socks5Proxy, nil, proxy.Direct)
+			if err != nil {
+				return fmt.Errorf("invalid SOCKS5 proxy address format: %w", err)
+			}
+		}
+		if c.DNSServer != "" {
+			if _, err := dns.NewECSResolver(c.DNSServer); err != nil {
+				return fmt.Errorf("invalid DNS server format: %w", err)
 			}
 		}
 	}

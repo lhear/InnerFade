@@ -140,9 +140,9 @@ func (s *Server) sendNegotiationResponse(conn net.Conn, success bool, alpn strin
 
 func (s *Server) dialTarget(address string, alpns []string) (net.Conn, string, error) {
 	logger.Debugf("dialing target: %s with ALPNs: %v", address, alpns)
-	host, _, err := net.SplitHostPort(address)
+	host, port, err := net.SplitHostPort(address)
 	if err != nil {
-		host = address
+		return nil, "", err
 	}
 	if !cache.IsValidDomain(host) {
 		return nil, "", fmt.Errorf("invalid domain for target dial: %s", host)
@@ -151,12 +151,27 @@ func (s *Server) dialTarget(address string, alpns []string) (net.Conn, string, e
 		ServerName: host,
 		NextProtos: alpns,
 	}
+
 	var conn net.Conn
+	if s.dnsResolver != nil {
+		ipAddrs, err := s.dnsResolver.LookupIP(context.Background(), host)
+		if err != nil {
+			return nil, "", err
+		}
+		if len(ipAddrs) == 0 {
+			return nil, "", fmt.Errorf("no IP addresses found for domain: %s", host)
+		}
+		logger.Debugf("resolved domain %s to IP addresses: %v", host, ipAddrs)
+		selectedIP := ipAddrs[0].String()
+		address = net.JoinHostPort(selectedIP, port)
+	}
+
 	if s.config.Socks5Proxy != "" {
 		conn, err = s.proxyDialer.Dial("tcp", address)
 	} else {
 		conn, err = net.Dial("tcp", address)
 	}
+
 	if err != nil {
 		return nil, "", err
 	}

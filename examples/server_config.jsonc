@@ -9,5 +9,6 @@
         "another.example.org" // Add more SNI values as needed
     ],
     "socks5_proxy": "", // Optional: Outbound SOCKS5 proxy address for the server (e.g., "127.0.0.1:1081")
-    "log_level": "info" // Logging level: debug, info, warn, error, none
+    "log_level": "info", // Logging level: debug, info, warn, error, none
+    "dns_server": "8.8.8.8:53@1.2.3.4#true" // Bypassing SOCKS5. Format: upstream@ecs_ip#prefer_ipv6
 }

@@ -62,7 +62,7 @@ func TestRealityConnection(t *testing.T) {
 		ClientMetaData: clientMetaData,
 	}
 
-	listener, err := net.Listen("tcp", "127.0.0.1:12345")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Failed to start REALITY server listener: %v", err)
 	}
