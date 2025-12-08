@@ -176,9 +176,6 @@ func UClient(c net.Conn, config *Config, ctx context.Context, destAddr string) (
 		hello.SessionId = make([]byte, 32)
 		copy(hello.Raw[39:], hello.SessionId)
 		copy(hello.Raw[6:], hello.SessionId)
-		copy(hello.SessionId, config.ClientMetaData[:32])
-		copy(hello.Random, config.ClientMetaData[32:])
-		binary.BigEndian.PutUint32(hello.Random[16:], uint32(time.Now().Unix()))
 		if config.Show {
 			fmt.Printf("REALITY localAddr: %v\thello.SessionId[:16]: %v\n", localAddr, hello.SessionId[:16])
 		}
@@ -208,8 +205,9 @@ func UClient(c net.Conn, config *Config, ctx context.Context, destAddr string) (
 			fmt.Printf("REALITY localAddr: %v\tuConn.AuthKey[:16]: %v\tAEAD\n", localAddr, uConn.AuthKey[:16])
 		}
 		buf := make([]byte, 64)
-		copy(buf[:32], hello.SessionId)
-		copy(buf[32:], hello.Random)
+		copy(buf[:32], config.ClientMetaData[:32])
+		copy(buf[32:], config.ClientMetaData[32:])
+		binary.BigEndian.PutUint32(buf[48:], uint32(time.Now().Unix()))
 		aead.Seal(buf[:0], []byte("e936915be949"), buf[:52], hello.Raw)
 		copy(hello.SessionId, buf[:32])
 		copy(hello.Raw[39:], hello.SessionId)
