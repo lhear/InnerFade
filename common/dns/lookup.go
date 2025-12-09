@@ -269,16 +269,37 @@ func reorderIPs(ips []net.IP, preferIPv6 bool) {
 	if len(ips) <= 1 {
 		return
 	}
-	head := 0
-	for i := 0; i < len(ips); i++ {
-		isV4 := ips[i].To4() != nil
-		isPref := (preferIPv6 && !isV4) || (!preferIPv6 && isV4)
+	var v4s []net.IP
+	var v6s []net.IP
 
-		if isPref {
-			if i != head {
-				ips[head], ips[i] = ips[i], ips[head]
-			}
-			head++
+	for _, ip := range ips {
+		if ip.To4() != nil {
+			v4s = append(v4s, ip)
+		} else {
+			v6s = append(v6s, ip)
+		}
+	}
+	var primary, secondary []net.IP
+	if preferIPv6 {
+		primary = v6s
+		secondary = v4s
+	} else {
+		primary = v4s
+		secondary = v6s
+	}
+
+	i := 0
+	pLen, sLen := len(primary), len(secondary)
+	maxLen := max(sLen, pLen)
+
+	for k := range maxLen {
+		if k < pLen {
+			ips[i] = primary[k]
+			i++
+		}
+		if k < sLen {
+			ips[i] = secondary[k]
+			i++
 		}
 	}
 }

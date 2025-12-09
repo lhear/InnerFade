@@ -154,24 +154,10 @@ func (s *Server) dialTarget(address string, alpns []string) (net.Conn, string, e
 
 	var conn net.Conn
 	if s.dnsResolver != nil {
-		ipAddrs, err := s.dnsResolver.LookupIP(context.Background(), host)
-		if err != nil {
-			return nil, "", err
-		}
-		if len(ipAddrs) == 0 {
-			return nil, "", fmt.Errorf("no IP addresses found for domain: %s", host)
-		}
-		logger.Debugf("resolved domain %s to IP addresses: %v", host, ipAddrs)
-		selectedIP := ipAddrs[0].String()
-		address = net.JoinHostPort(selectedIP, port)
-	}
-
-	if s.config.Socks5Proxy != "" {
-		conn, err = s.proxyDialer.Dial("tcp", address)
+		conn, err = s.dialHappyEyeballs(context.Background(), host, port)
 	} else {
-		conn, err = net.Dial("tcp", address)
+		conn, err = s.dialTCP(context.Background(), address)
 	}
-
 	if err != nil {
 		return nil, "", err
 	}
