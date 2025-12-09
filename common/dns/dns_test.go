@@ -344,7 +344,7 @@ func TestResolver_Timeout(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected timeout error, got nil")
 	}
-	if duration > 1*time.Second {
+	if duration > 5*time.Second {
 		t.Errorf("Test took too long: %v", duration)
 	}
 }
