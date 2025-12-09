@@ -254,6 +254,9 @@ func (r *ECSResolver) LookupIP(ctx context.Context, host string) ([]net.IP, erro
 	if host == "" {
 		return nil, errors.New("empty host")
 	}
+	if ip := net.ParseIP(host); ip != nil {
+		return []net.IP{ip}, nil
+	}
 	if !strings.HasSuffix(host, ".") {
 		host += "."
 	}

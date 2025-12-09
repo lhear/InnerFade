@@ -146,9 +146,10 @@ func (s *Server) handleHTTPRequest(conn net.Conn) {
 		targetHost += ":80"
 	}
 
-	hostname, _, err := net.SplitHostPort(targetHost)
+	hostname, port, err := net.SplitHostPort(targetHost)
 	if err != nil {
-		hostname = targetHost
+		logger.Warnf("[%s] failed to split address: %v", conn.RemoteAddr(), err)
+		return
 	}
 
 	if !cache.IsValidDomain(hostname) {
@@ -157,10 +158,10 @@ func (s *Server) handleHTTPRequest(conn net.Conn) {
 	}
 	logger.Infof("[%s] handling HTTP request for %s", conn.RemoteAddr(), targetHost)
 	var destConn net.Conn
-	if s.config.Socks5Proxy != "" {
-		destConn, err = s.proxyDialer.Dial("tcp", targetHost)
+	if s.dnsResolver != nil {
+		destConn, err = s.dialHappyEyeballs(context.Background(), hostname, port)
 	} else {
-		destConn, err = s.dialer.Dial("tcp", targetHost)
+		destConn, err = s.dialTCP(context.Background(), targetHost)
 	}
 	if err != nil {
 		logger.Warnf("[%s] http proxy connection failed to %s: %v", conn.RemoteAddr(), targetHost, err)
