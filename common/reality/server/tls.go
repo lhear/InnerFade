@@ -154,6 +154,7 @@ func Server(ctx context.Context, conn net.Conn, config *Config) (*Conn, error) {
 	}
 
 	copying := false
+	metadata := make([]byte, 12)
 
 	waitGroup := new(sync.WaitGroup)
 	waitGroup.Add(2)
@@ -210,7 +211,7 @@ func Server(ctx context.Context, conn net.Conn, config *Config) (*Conn, error) {
 				if config.MaxTimeDiff == 0 || time.Since(hs.c.ClientTime).Abs() <= config.MaxTimeDiff {
 					hs.c.conn = conn
 					if config.GetServerMetaDataForClient != nil {
-						copy(config.ServerMetaData[:], config.GetServerMetaDataForClient(conn.RemoteAddr().String(), plainText[:48]))
+						copy(metadata, config.GetServerMetaDataForClient(conn.RemoteAddr().String(), plainText[:48]))
 					}
 				}
 				break
@@ -312,7 +313,7 @@ func Server(ctx context.Context, conn net.Conn, config *Config) (*Conn, error) {
 					}
 					block, _ := aes.NewCipher(hs.c.AuthKey)
 					aead, _ := cipher.NewGCMWithTagSize(block, 12)
-					aead.Seal(hs.hello.random[:0], []byte("c0bbe77b11a5"), config.ServerMetaData[:], nil)
+					aead.Seal(hs.hello.random[:0], []byte("c0bbe77b11a5"), metadata, nil)
 				}
 				hs.c.out.handshakeLen[i] = handshakeLen
 				s2cSaved = s2cSaved[handshakeLen:]

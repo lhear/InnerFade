@@ -33,7 +33,6 @@ func TestRealityConnection(t *testing.T) {
 		ServerNames: []string{"www.apple.com"},
 		Show:        true,
 		Dest:        "www.apple.com:443",
-		Type:        "tcp",
 		MaxTimeDiff: 60 * 1000,
 	}
 
@@ -49,17 +48,26 @@ func TestRealityConnection(t *testing.T) {
 		return serverMetaData[:]
 	}
 
+	realityServer, err := NewProtocol(serverConfig)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
 	fingerprint, err := ParseFingerprintStr("chrome")
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
 
 	clientConfig := &Config{
-		ServerName:     "www.apple.com",
-		PublicKey:      publicKey.Bytes(),
-		Fingerprint:    fingerprint,
-		Show:           true,
-		ClientMetaData: clientMetaData,
+		ServerName:  "www.apple.com",
+		PublicKey:   publicKey.Bytes(),
+		Fingerprint: fingerprint,
+		Show:        true,
+	}
+
+	realityClient, err := NewProtocol(clientConfig)
+	if err != nil {
+		t.Fatalf("%v", err)
 	}
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -93,7 +101,7 @@ func TestRealityConnection(t *testing.T) {
 				defer serverWg.Done()
 				defer conn.Close()
 
-				rConn, err := Server(conn, serverConfig)
+				rConn, err := realityServer.Server(conn)
 				if err != nil {
 					t.Errorf("REALITY server handshake failed: %v", err)
 					return
@@ -129,7 +137,7 @@ func TestRealityConnection(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		realityClientConn, err := UClient(clientConn, clientConfig, ctx, "localhost")
+		realityClientConn, err := realityClient.UClient(clientConn, ctx, "localhost", clientMetaData)
 		if err != nil {
 			t.Fatalf("REALITY client connection failed: %v", err)
 		}

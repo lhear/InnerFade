@@ -14,20 +14,17 @@ import (
 	"innerfade/common/reality"
 	"innerfade/config"
 	"innerfade/logger"
-
-	utls "github.com/refraction-networking/utls"
 )
 
 var domainCache *cache.DomainCache
 
 type Client struct {
-	config      *config.Config
-	ca          *common.CA
-	certCache   *CertCache
-	serverAddr  string
-	publicKey   []byte
-	dialer      *net.Dialer
-	fingerprint utls.ClientHelloID
+	config     *config.Config
+	ca         *common.CA
+	certCache  *CertCache
+	serverAddr string
+	dialer     *net.Dialer
+	reality    *reality.Protocol
 }
 
 type cachedCert struct {
@@ -107,12 +104,19 @@ func Start(cfg *config.Config) error {
 		},
 	}
 
-	client.fingerprint, err = reality.ParseFingerprintStr(cfg.Fingerprint)
+	fingerprint, _ := reality.ParseFingerprintStr(cfg.Fingerprint)
+	publicKey, _ := base64.RawURLEncoding.DecodeString(cfg.PublicKey)
+
+	client.reality, err = reality.NewProtocol(&reality.Config{
+		ServerName:  cfg.ServerName,
+		PublicKey:   publicKey,
+		Fingerprint: fingerprint,
+		Show:        logger.IsDebugEnabled(),
+	})
+
 	if err != nil {
 		return err
 	}
-
-	client.publicKey, _ = base64.RawURLEncoding.DecodeString(cfg.PublicKey)
 
 	proxy := &http.Server{
 		Addr:        cfg.ListenAddr,

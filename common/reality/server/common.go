@@ -267,11 +267,9 @@ type Config struct {
 	Type string
 	Dest string
 
-	ServerNames    map[string]bool
-	PrivateKey     []byte
-	MaxTimeDiff    time.Duration
-	ClientMetaData [48]byte
-	ServerMetaData [12]byte
+	ServerNames map[string]bool
+	PrivateKey  []byte
+	MaxTimeDiff time.Duration
 
 	GetServerMetaDataForClient func(remoteAddr string, data []byte) []byte
 
@@ -387,8 +385,6 @@ func (c *Config) Clone() *Config {
 		ServerNames:                         c.ServerNames,
 		PrivateKey:                          c.PrivateKey,
 		MaxTimeDiff:                         c.MaxTimeDiff,
-		ClientMetaData:                      c.ClientMetaData,
-		ServerMetaData:                      c.ServerMetaData,
 		LimitFallbackUpload:                 c.LimitFallbackUpload,
 		LimitFallbackDownload:               c.LimitFallbackDownload,
 		Rand:                                c.Rand,

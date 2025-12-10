@@ -31,6 +31,7 @@ type Server struct {
 	dnsResolver    *dns.ECSResolver
 	handshakeCache sync.Map
 	privateKey     []byte
+	reality        *reality.Protocol
 }
 
 func Start(cfg *config.Config) error {
@@ -67,15 +68,17 @@ func Start(cfg *config.Config) error {
 
 	server.privateKey, _ = base64.RawURLEncoding.DecodeString(cfg.PrivateKey)
 
-	serverConfig := &reality.Config{
-		PrivateKey:  server.privateKey,
-		ServerNames: cfg.ServerNames,
-		Show:        logger.IsDebugEnabled(),
-		Dest:        cfg.Dest,
-		Type:        "tcp",
+	server.reality, err = reality.NewProtocol(
+		&reality.Config{
+			PrivateKey:                 server.privateKey,
+			ServerNames:                cfg.ServerNames,
+			Show:                       logger.IsDebugEnabled(),
+			Dest:                       cfg.Dest,
+			GetServerMetaDataForClient: server.handleClientMetaData,
+		})
+	if err != nil {
+		return err
 	}
-
-	serverConfig.GetServerMetaDataForClient = server.handleClientMetaData
 
 	listener, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
@@ -94,7 +97,7 @@ func Start(cfg *config.Config) error {
 			remoteAddr := conn.RemoteAddr().String()
 			logger.Infof("[%s] accepted connection", remoteAddr)
 
-			conn, err := reality.Server(conn, serverConfig)
+			conn, err := server.reality.Server(conn)
 			if err != nil {
 				server.handshakeCache.LoadAndDelete(remoteAddr)
 				logger.Errorf("[%s] failed to accept connection: %v", remoteAddr, err)

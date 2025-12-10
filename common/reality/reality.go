@@ -31,14 +31,9 @@ import (
 	"golang.org/x/net/http2"
 )
 
-type Conn struct {
-	*reality.Conn
-}
-
 type Config struct {
 	Show                       bool
 	Dest                       string
-	Type                       string
 	ServerNames                []string
 	PrivateKey                 []byte
 	MaxTimeDiff                uint64
@@ -46,32 +41,54 @@ type Config struct {
 	ServerName                 string
 	PublicKey                  []byte
 	SpiderX                    string
-	SpiderY                    []int64
-	MasterKeyLog               string
-	ClientMetaData             [48]byte
-	ServerMetaData             [12]byte
 	GetServerMetaDataForClient func(remoteAddr string, data []byte) []byte
 }
 
-func (c *Config) GetREALITYConfig() *reality.Config {
+type Protocol struct {
+	Config             *Config
+	serverConfig       *reality.Config
+	clientECDPublicKey *ecdh.PublicKey
+}
+
+func NewProtocol(c *Config) (*Protocol, error) {
+	p := &Protocol{
+		Config: c,
+	}
+
 	var dialer net.Dialer
-	config := &reality.Config{
+	rConf := &reality.Config{
 		DialContext:                 dialer.DialContext,
 		Show:                        c.Show,
-		Type:                        c.Type,
+		Type:                        "tcp",
 		Dest:                        c.Dest,
 		PrivateKey:                  c.PrivateKey,
 		MaxTimeDiff:                 time.Duration(c.MaxTimeDiff) * time.Millisecond,
 		NextProtos:                  nil,
 		SessionTicketsDisabled:      true,
 		DynamicRecordSizingDisabled: true,
+		ServerNames:                 make(map[string]bool, len(c.ServerNames)),
+		GetServerMetaDataForClient:  c.GetServerMetaDataForClient,
 	}
-	config.ServerNames = make(map[string]bool)
 	for _, serverName := range c.ServerNames {
-		config.ServerNames[serverName] = true
+		rConf.ServerNames[serverName] = true
 	}
-	config.GetServerMetaDataForClient = c.GetServerMetaDataForClient
-	return config
+
+	go reality.DetectPostHandshakeRecordsLens(rConf)
+	p.serverConfig = rConf
+
+	if len(c.PublicKey) > 0 {
+		pubKey, err := ecdh.X25519().NewPublicKey(c.PublicKey)
+		if err != nil {
+			return nil, fmt.Errorf("REALITY: invalid public key: %v", err)
+		}
+		p.clientECDPublicKey = pubKey
+	}
+
+	return p, nil
+}
+
+type Conn struct {
+	*reality.Conn
 }
 
 func (c *Conn) HandshakeAddress() net.Addr {
@@ -89,16 +106,14 @@ func (c *Conn) HandshakeAddress() net.Addr {
 	return addr
 }
 
-func Server(c net.Conn, config *Config) (net.Conn, error) {
-	conf := config.GetREALITYConfig()
-	reality.DetectPostHandshakeRecordsLens(conf)
-	realityConn, err := reality.Server(context.Background(), c, conf)
+func (p *Protocol) Server(c net.Conn) (net.Conn, error) {
+	realityConn, err := reality.Server(context.Background(), c, p.serverConfig)
 	return &Conn{Conn: realityConn}, err
 }
 
 type UConn struct {
 	*utls.UConn
-	Config         *Config
+	Protocol       *Protocol
 	ServerName     string
 	AuthKey        []byte
 	Verified       bool
@@ -152,14 +167,14 @@ func (c *UConn) VerifyPeerCertificate(rawCerts [][]byte, verifiedChains [][]*x50
 	return nil
 }
 
-func UClient(c net.Conn, config *Config, ctx context.Context, destAddr string) (net.Conn, error) {
+func (p *Protocol) UClient(c net.Conn, ctx context.Context, destAddr string, metadata [48]byte) (net.Conn, error) {
 	localAddr := c.LocalAddr().String()
 	uConn := &UConn{
-		Config: config,
+		Protocol: p,
 	}
 	utlsConfig := &utls.Config{
 		VerifyPeerCertificate:  uConn.VerifyPeerCertificate,
-		ServerName:             config.ServerName,
+		ServerName:             p.Config.ServerName,
 		InsecureSkipVerify:     true,
 		SessionTicketsDisabled: true,
 	}
@@ -168,20 +183,18 @@ func UClient(c net.Conn, config *Config, ctx context.Context, destAddr string) (
 	}
 	uConn.ServerName = utlsConfig.ServerName
 
-	// Use default fingerprint if none provided
-	uConn.UConn = utls.UClient(c, utlsConfig, config.Fingerprint)
+	uConn.UConn = utls.UClient(c, utlsConfig, p.Config.Fingerprint)
 	{
 		uConn.BuildHandshakeState()
 		hello := uConn.HandshakeState.Hello
 		hello.SessionId = make([]byte, 32)
 		copy(hello.Raw[39:], hello.SessionId)
 		copy(hello.Raw[6:], hello.SessionId)
-		if config.Show {
+		if p.Config.Show {
 			fmt.Printf("REALITY localAddr: %v\thello.SessionId[:16]: %v\n", localAddr, hello.SessionId[:16])
 		}
-		publicKey, err := ecdh.X25519().NewPublicKey(config.PublicKey)
-		if err != nil {
-			return nil, fmt.Errorf("REALITY: publicKey == nil: %v", err)
+		if p.clientECDPublicKey == nil {
+			return nil, fmt.Errorf("REALITY: publicKey is not initialized")
 		}
 		ecdhe := uConn.HandshakeState.State13.KeyShareKeys.Ecdhe
 		if ecdhe == nil {
@@ -190,7 +203,7 @@ func UClient(c net.Conn, config *Config, ctx context.Context, destAddr string) (
 		if ecdhe == nil {
 			return nil, fmt.Errorf("current fingerprint does not support TLS 1.3, REALITY handshake cannot establish")
 		}
-		uConn.AuthKey, _ = ecdhe.ECDH(publicKey)
+		uConn.AuthKey, _ = ecdhe.ECDH(p.clientECDPublicKey)
 		if uConn.AuthKey == nil {
 			return nil, fmt.Errorf("REALITY: SharedKey == nil")
 		}
@@ -201,12 +214,11 @@ func UClient(c net.Conn, config *Config, ctx context.Context, destAddr string) (
 		if err != nil {
 			return nil, err
 		}
-		if config.Show {
+		if p.Config.Show {
 			fmt.Printf("REALITY localAddr: %v\tuConn.AuthKey[:16]: %v\tAEAD\n", localAddr, uConn.AuthKey[:16])
 		}
 		buf := make([]byte, 64)
-		copy(buf[:32], config.ClientMetaData[:32])
-		copy(buf[32:], config.ClientMetaData[32:])
+		copy(buf, metadata[:])
 		binary.BigEndian.PutUint32(buf[48:], uint32(time.Now().Unix()))
 		aead.Seal(buf[:0], []byte("e936915be949"), buf[:52], hello.Raw)
 		copy(hello.SessionId, buf[:32])
@@ -214,109 +226,109 @@ func UClient(c net.Conn, config *Config, ctx context.Context, destAddr string) (
 		copy(hello.Random, buf[32:])
 		copy(hello.Raw[6:], hello.Random)
 	}
+
 	if err := uConn.HandshakeContext(ctx); err != nil {
 		return nil, err
 	}
-	if config.Show {
+	if p.Config.Show {
 		fmt.Printf("REALITY localAddr: %v\tuConn.Verified: %v\n", localAddr, uConn.Verified)
 	}
+
 	if !uConn.Verified {
-		go func() {
-			client := &http.Client{
-				Transport: &http2.Transport{
-					DialTLSContext: func(ctx context.Context, network, addr string, cfg *gotls.Config) (net.Conn, error) {
-						fmt.Printf("REALITY localAddr: %v\tDialTLSContext\n", localAddr)
-						return uConn, nil
-					},
-				},
-			}
-			prefix := []byte("https://" + uConn.ServerName)
-			maps.Lock()
-			if maps.maps == nil {
-				maps.maps = make(map[string]map[string]struct{})
-			}
-			paths := maps.maps[uConn.ServerName]
-			if paths == nil {
-				paths = make(map[string]struct{})
-				paths[config.SpiderX] = struct{}{}
-				maps.maps[uConn.ServerName] = paths
-			}
-			firstURL := string(prefix) + getPathLocked(paths)
-			maps.Unlock()
-			get := func(first bool) {
-				var (
-					req  *http.Request
-					resp *http.Response
-					err  error
-					body []byte
-				)
-				if first {
-					req, _ = http.NewRequest("GET", firstURL, nil)
-				} else {
-					maps.Lock()
-					req, _ = http.NewRequest("GET", string(prefix)+getPathLocked(paths), nil)
-					maps.Unlock()
-				}
-				if req == nil {
-					return
-				}
-				// Use a simple user agent instead of fingerprint.Client
-				req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36") // TODO: User-Agent map
-				if first && config.Show {
-					fmt.Printf("REALITY localAddr: %v\treq.UserAgent(): %v\n", localAddr, req.UserAgent())
-				}
-				times := 1
-				if !first {
-					// Simplified random times - using basic math/rand instead of xray crypto
-					times = 3 // Default value instead of crypto.RandBetween
-				}
-				for j := 0; j < times; j++ {
-					if !first && j == 0 {
-						req.Header.Set("Referer", firstURL)
-					}
-					// Use fixed padding instead of random padding
-					req.AddCookie(&http.Cookie{Name: "padding", Value: strings.Repeat("0", 32)})
-					if resp, err = client.Do(req); err != nil {
-						break
-					}
-					defer resp.Body.Close()
-					req.Header.Set("Referer", req.URL.String())
-					if body, err = io.ReadAll(resp.Body); err != nil {
-						break
-					}
-					maps.Lock()
-					for _, m := range href.FindAllSubmatch(body, -1) {
-						m[1] = bytes.TrimPrefix(m[1], prefix)
-						if !bytes.Contains(m[1], dot) {
-							paths[string(m[1])] = struct{}{}
-						}
-					}
-					req.URL.Path = getPathLocked(paths)
-					if config.Show {
-						fmt.Printf("REALITY localAddr: %v\treq.Referer(): %v\n", localAddr, req.Referer())
-						fmt.Printf("REALITY localAddr: %v\tlen(body): %v\n", localAddr, len(body))
-						fmt.Printf("REALITY localAddr: %v\tlen(paths): %v\n", localAddr, len(paths))
-					}
-					maps.Unlock()
-					if !first {
-						// Fixed sleep duration instead of random
-						time.Sleep(100 * time.Millisecond) // interval
-					}
-				}
-			}
-			get(true)
-			// Fixed concurrency instead of random
-			concurrency := 2
-			for i := 0; i < concurrency; i++ {
-				go get(false)
-			}
-			// Do not close the connection
-		}()
-		// Fixed sleep duration instead of random
-		time.Sleep(200 * time.Millisecond) // return
+		go runSpider(p, uConn, localAddr)
+		time.Sleep(200 * time.Millisecond)
 		return nil, fmt.Errorf("REALITY: processed invalid connection")
 	}
 	return uConn, nil
+}
+
+func runSpider(p *Protocol, uConn *UConn, localAddr string) {
+	client := &http.Client{
+		Transport: &http2.Transport{
+			DialTLSContext: func(ctx context.Context, network, addr string, cfg *gotls.Config) (net.Conn, error) {
+				if p.Config.Show {
+					fmt.Printf("REALITY localAddr: %v\tDialTLSContext\n", localAddr)
+				}
+				return uConn, nil
+			},
+		},
+	}
+	prefix := []byte("https://" + uConn.ServerName)
+	maps.Lock()
+	if maps.maps == nil {
+		maps.maps = make(map[string]map[string]struct{})
+	}
+	paths := maps.maps[uConn.ServerName]
+	if paths == nil {
+		paths = make(map[string]struct{})
+		paths[p.Config.SpiderX] = struct{}{}
+		maps.maps[uConn.ServerName] = paths
+	}
+	firstURL := string(prefix) + getPathLocked(paths)
+	maps.Unlock()
+
+	get := func(first bool) {
+		var (
+			req  *http.Request
+			resp *http.Response
+			err  error
+			body []byte
+		)
+		if first {
+			req, _ = http.NewRequest("GET", firstURL, nil)
+		} else {
+			maps.Lock()
+			req, _ = http.NewRequest("GET", string(prefix)+getPathLocked(paths), nil)
+			maps.Unlock()
+		}
+		if req == nil {
+			return
+		}
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+		if first && p.Config.Show {
+			fmt.Printf("REALITY localAddr: %v\treq.UserAgent(): %v\n", localAddr, req.UserAgent())
+		}
+		times := 1
+		if !first {
+			times = 3
+		}
+		for j := 0; j < times; j++ {
+			if !first && j == 0 {
+				req.Header.Set("Referer", firstURL)
+			}
+			req.AddCookie(&http.Cookie{Name: "padding", Value: strings.Repeat("0", 32)})
+			if resp, err = client.Do(req); err != nil {
+				break
+			}
+			defer resp.Body.Close()
+			req.Header.Set("Referer", req.URL.String())
+			if body, err = io.ReadAll(resp.Body); err != nil {
+				break
+			}
+			maps.Lock()
+			for _, m := range href.FindAllSubmatch(body, -1) {
+				m[1] = bytes.TrimPrefix(m[1], prefix)
+				if !bytes.Contains(m[1], dot) {
+					paths[string(m[1])] = struct{}{}
+				}
+			}
+			req.URL.Path = getPathLocked(paths)
+			if p.Config.Show {
+				fmt.Printf("REALITY localAddr: %v\treq.Referer(): %v\n", localAddr, req.Referer())
+				fmt.Printf("REALITY localAddr: %v\tlen(body): %v\n", localAddr, len(body))
+				fmt.Printf("REALITY localAddr: %v\tlen(paths): %v\n", localAddr, len(paths))
+			}
+			maps.Unlock()
+			if !first {
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
+	}
+	get(true)
+	concurrency := 2
+	for range concurrency {
+		go get(false)
+	}
 }
 
 var (
@@ -345,7 +357,7 @@ func getPathLocked(paths map[string]struct{}) string {
 		return "/"
 	}
 
-	stopAt := count / 2 // Simplified instead of random
+	stopAt := count / 2
 	i := 0
 	for s := range paths {
 		if i == stopAt {

@@ -12,7 +12,6 @@ import (
 	"innerfade/common"
 	"innerfade/common/cache"
 	"innerfade/common/compress"
-	"innerfade/common/reality"
 	"innerfade/logger"
 )
 
@@ -94,7 +93,7 @@ func (c *Client) dialUpstreamWithMetaData(hostname string, port uint16, alpn []s
 	return conn, true, nil
 }
 
-func (c *Client) dialUpstream(metaData [48]byte) (net.Conn, error) {
+func (c *Client) dialUpstream(metadata [48]byte) (net.Conn, error) {
 	rawConn, err := c.dialer.Dial("tcp", c.serverAddr)
 	if err != nil {
 		return nil, err
@@ -105,16 +104,7 @@ func (c *Client) dialUpstream(metaData [48]byte) (net.Conn, error) {
 		host = c.serverAddr
 	}
 
-	config := &reality.Config{
-		ServerName:  c.config.ServerName,
-		PublicKey:   c.publicKey,
-		Fingerprint: c.fingerprint,
-		Show:        logger.IsDebugEnabled(),
-	}
-
-	copy(config.ClientMetaData[:], metaData[:])
-
-	conn, err := reality.UClient(rawConn, config, context.Background(), host)
+	conn, err := c.reality.UClient(rawConn, context.Background(), host, metadata)
 	if err == nil {
 		logger.Debugf("successfully dialed upstream server: %s", c.serverAddr)
 	}
