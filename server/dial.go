@@ -75,7 +75,14 @@ func (s *Server) dialHappyEyeballs(ctx context.Context, host, port string) (net.
 
 func (s *Server) dialTCP(ctx context.Context, address string) (net.Conn, error) {
 	if s.config.Socks5Proxy != "" {
-		return s.proxyDialer.Dial("tcp", address)
+		host, _, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, err
+		}
+		ip := net.ParseIP(host)
+		if host != "localhost" && !(ip != nil && (ip.IsLoopback() || ip.IsPrivate())) {
+			return s.proxyDialer.Dial("tcp", address)
+		}
 	}
 	var d net.Dialer
 	return d.DialContext(ctx, "tcp", address)
