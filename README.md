@@ -10,12 +10,13 @@ InnerFade is a network proxy tool that leverages the [REALITY](https://github.co
 
 ## Getting Started
 Requires Go 1.24+.
-1.  **Build:** `go build -trimpath -ldflags "-s -w" -o innerfade ./cmd`
-2.  **Configuration:** Use separate client/server JSON config files (see `examples/`).
-3.  **Generate Keys & CA:**
+1.  **Generate:** `go generate ./...`
+2.  **Build:** `go build -trimpath -ldflags "-s -w" -o innerfade ./cmd`
+3.  **Configuration:** Use separate client/server JSON config files (see `examples/`).
+4.  **Generate Keys & CA:**
     *   X25519 Key Pair: `./innerfade -generate-keypair`
     *   MITM CA Cert/Key: `./innerfade -generate-ca -ca-cert ca.crt -ca-key ca.key` (CA must be trusted by client).
-4.  **Run:** `./innerfade -c config.json`
+5.  **Run:** `./innerfade -c config.json`
 
 ## Security Considerations
 *   Client-side MITM requires full trust in the tool and operator; protect the X25519 private key diligently.
