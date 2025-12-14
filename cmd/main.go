@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
+	"runtime"
 	"strings"
 
 	"innerfade/client"
@@ -36,6 +37,8 @@ func main() {
 
 	if *version {
 		fmt.Printf("Version: %s\n", Version)
+		fmt.Printf("OS/Arch: %s/%s\n", runtime.GOOS, runtime.GOARCH)
+		fmt.Printf("Go Version: %s\n", runtime.Version())
 		return
 	}
 
