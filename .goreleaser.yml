@@ -1,5 +1,10 @@
 project_name: innerfade
 version: 2
+
+before:
+  hooks:
+    - go generate ./...
+
 builds:
   - id: android
     main: ./cmd

@@ -1,18 +1,16 @@
+//go:generate go run gen.go
+
 package compress
 
 import (
 	"errors"
 	"fmt"
-	"sort"
+	"math/bits"
 	"strings"
 )
 
 const (
-	charset = "abcdefghijklmnopqrstuvwxyz0123456789-."
-	base    = 38
-)
-
-const (
+	base        = 38
 	max3Char    = base * base * base
 	max2Char    = base * base
 	max1Char    = base
@@ -21,65 +19,14 @@ const (
 	offsetDict  = offset1Char + max1Char
 )
 
-type trieNode struct {
-	children [base]*trieNode
-	code     uint16
-	isEnd    bool
-}
-
-var (
-	charToIdxTable [256]int8
-	idxToCharTable [base]byte
-	dictList       []string
-	trieRoot       *trieNode
-)
-
-func init() {
-	for i := 0; i < 256; i++ {
-		charToIdxTable[i] = -1
+func getTrieChild(nodeIdx uint32, charIdx int8) (uint32, bool) {
+	node := &trieNodes[nodeIdx]
+	bit := uint64(1) << uint64(charIdx)
+	if node.mask&bit == 0 {
+		return 0, false
 	}
-	for i := 0; i < len(charset); i++ {
-		c := charset[i]
-		idx := int8(i)
-		charToIdxTable[c] = idx
-		idxToCharTable[i] = c
-		if c >= 'a' && c <= 'z' {
-			charToIdxTable[c-32] = idx
-		}
-	}
-	maxDictCapacity := 65536 - offsetDict
-	if len(commonDict) > maxDictCapacity {
-		panic(fmt.Sprintf("Dictionary size (%d) exceeds remaining coding space (%d)", len(commonDict), maxDictCapacity))
-	}
-	sortedDict := make([]string, len(commonDict))
-	copy(sortedDict, commonDict)
-	sort.Slice(sortedDict, func(i, j int) bool {
-		return len(sortedDict[i]) > len(sortedDict[j])
-	})
-	dictList = sortedDict
-	trieRoot = &trieNode{}
-	for i, s := range sortedDict {
-		code := uint16(offsetDict + i)
-		addStringToTrie(trieRoot, s, code)
-	}
-}
-
-func addStringToTrie(root *trieNode, s string, code uint16) {
-	node := root
-	for i := 0; i < len(s); i++ {
-		charIdx := charToIdxTable[s[i]]
-		if charIdx < 0 {
-			continue
-		}
-		if node.children[charIdx] == nil {
-			node.children[charIdx] = &trieNode{}
-		}
-		node = node.children[charIdx]
-	}
-	if !node.isEnd {
-		node.isEnd = true
-		node.code = code
-	}
+	childOffset := bits.OnesCount64(node.mask & (bit - 1))
+	return node.childrenBase + uint32(childOffset), true
 }
 
 func Compress(domain string) ([]byte, error) {
@@ -89,19 +36,20 @@ func Compress(domain string) ([]byte, error) {
 	for i < n {
 		matchedLen := 0
 		var matchedCode uint16
-		node := trieRoot
+		currNodeIdx := uint32(0)
 		for k := i; k < n; k++ {
 			charIdx := charToIdxTable[domain[k]]
 			if charIdx < 0 {
 				return nil, fmt.Errorf("invalid character '%c' at index %d", domain[k], k)
 			}
-			node = node.children[charIdx]
-			if node == nil {
+			nextIdx, exists := getTrieChild(currNodeIdx, charIdx)
+			if !exists {
 				break
 			}
-			if node.isEnd {
+			currNodeIdx = nextIdx
+			if trieNodes[currNodeIdx].isEnd {
 				matchedLen = k - i + 1
-				matchedCode = node.code
+				matchedCode = trieNodes[currNodeIdx].code
 			}
 		}
 		if matchedLen > 0 {
@@ -118,7 +66,6 @@ func Compress(domain string) ([]byte, error) {
 			v2 := int(charToIdxTable[domain[i+1]])
 			v3 := int(charToIdxTable[domain[i+2]])
 			if v2 < 0 || v3 < 0 {
-
 				return nil, fmt.Errorf("invalid character sequence at index %d", i)
 			}
 			val := uint16(v1*max2Char + v2*max1Char + v3)
