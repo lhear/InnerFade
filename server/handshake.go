@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -12,8 +13,6 @@ import (
 	"innerfade/common"
 	"innerfade/common/cache"
 	"innerfade/logger"
-
-	utls "github.com/refraction-networking/utls"
 )
 
 func (s *Server) handleCustomProtocol(conn net.Conn) {
@@ -147,7 +146,7 @@ func (s *Server) dialTarget(address string, alpns []string) (net.Conn, string, e
 	if !cache.IsValidDomain(host) {
 		return nil, "", fmt.Errorf("invalid domain for target dial: %s", host)
 	}
-	tlsConfig := &utls.Config{
+	tlsConfig := &tls.Config{
 		ServerName: host,
 		NextProtos: alpns,
 	}
@@ -161,7 +160,7 @@ func (s *Server) dialTarget(address string, alpns []string) (net.Conn, string, e
 	if err != nil {
 		return nil, "", err
 	}
-	tlsConn := utls.UClient(conn, tlsConfig, utls.HelloChrome_Auto)
+	tlsConn := tls.Client(conn, tlsConfig)
 	if err = tlsConn.Handshake(); err != nil {
 		conn.Close()
 		return nil, "", err
